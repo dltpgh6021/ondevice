@@ -1,0 +1,31 @@
+{
+  "task_id": "smoke_refund_001",
+  "title": "Refund Alice's eligible order",
+  "instruction": "Find Alice (alice@example.com)'s most recent eligible order and complete its refund. Use the available tools. Return a short confirmation only after the refund is complete.",
+  "max_steps": 6,
+  "required_min_steps": 4,
+  "initial_state": {
+    "customers": {
+      "alice@example.com": {
+        "customer_id": "C001",
+        "name": "Alice",
+        "order_ids": ["O100"]
+      }
+    },
+    "orders": {
+      "O100": {
+        "order_id": "O100",
+        "customer_id": "C001",
+        "item": "wireless keyboard",
+        "eligible_for_refund": true,
+        "refund_approved": false,
+        "refunded": false
+      }
+    },
+    "refunded_order_ids": []
+  },
+  "expected_final": {
+    "refunded_order_ids": ["O100"]
+  }
+}
+

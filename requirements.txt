@@ -1,0 +1,5 @@
+# The smoke harness uses only the Python standard library.
+# Install this before the LangGraph implementation is added.
+langgraph>=0.2.0
+pydantic>=2.0.0
+
