@@ -126,6 +126,48 @@ llama-quantize --help
 
 GPU PC에서는 CUDA가 활성화된 llama.cpp 빌드 또는 CUDA 지원 배포본을 사용합니다. FP16·Q8·Q4를 모두 같은 GPU PC에서 실행해야 실행 시간과 메모리를 공정하게 비교할 수 있습니다. `llama` 명령 대신 `llama-server`를 사용하는 배포본이라면 README의 서버 명령에서 실행 파일 이름만 해당 이름으로 바꿉니다.
 
+#### Windows NVIDIA GPU: 사전 빌드 바이너리 사용(권장)
+
+1. NVIDIA 드라이버가 설치되어 있는지 확인합니다.
+
+```cmd
+nvidia-smi
+```
+
+2. [llama.cpp 공식 Releases](https://github.com/ggml-org/llama.cpp/releases)에서 PC에 맞는 **Windows x64 CUDA** 패키지를 다운로드합니다. NVIDIA GPU라면 CUDA 12 패키지를 우선 사용하고, 릴리스 설명에 표시된 CUDA DLL을 함께 보관합니다.
+3. 압축을 예를 들어 `C:\tools\llama-cuda`에 풉니다.
+4. 압축을 푼 폴더에서 다음 파일이 있는지 확인합니다. 릴리스에 따라 이름이 `llama.exe` 또는 `llama-server.exe`일 수 있습니다.
+
+```cmd
+llama-server.exe --version
+llama-quantize.exe --help
+```
+
+5. 매번 전체 경로를 쓰지 않으려면 해당 폴더를 PATH에 추가합니다. PATH를 수정하지 않는 경우에는 아래 명령에서 실행 파일의 전체 경로를 사용합니다.
+
+```cmd
+set PATH=%PATH%;C:\tools\llama-cuda
+llama-server.exe --version
+```
+
+#### Windows에서 소스 빌드
+
+사전 빌드 패키지를 사용할 수 없을 때만 다음 방법을 사용합니다. 공식 빌드 문서의 CUDA 옵션은 `GGML_CUDA=ON`입니다.
+
+```cmd
+git clone https://github.com/ggml-org/llama.cpp.git C:\tools\llama.cpp
+cd /d C:\tools\llama.cpp
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release
+```
+
+빌드 후 실행 파일은 보통 `build\bin\Release\` 아래에 있습니다. 이 경로의 `llama-server.exe`, `llama-quantize.exe`를 사용하고, `llama` 통합 명령이 없다면 `quantize_models.py`에 `--llama`와 `--quantizer` 전체 경로를 전달합니다.
+
+공식 서버 문서와 CUDA 빌드 참고:
+
+- [llama.cpp server 사용법](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+- [llama.cpp CUDA 빌드 문서](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)
+
 ### 3. 모델 준비
 
 모델은 GitHub에서 복제하지 않습니다. 새 PC에서 다음 중 하나를 수행합니다.
@@ -145,6 +187,49 @@ reference-Q4   = 제공처에서 미리 양자화한 Q4_K_M
 
 모델 파일의 실제 경로와 SHA-256 hash는 `models/manifest.json`에 기록합니다. 모델을 별도 경로에 보관하는 경우에도 실행 시 `--model-path`를 지정하면 결과 로그에 모델 hash를 남길 수 있습니다.
 
+#### 원본 FP16 GGUF를 models에 저장
+
+원본은 [ggml-org/Qwen3-1.7B-GGUF의 Qwen3-1.7B-f16.gguf](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/blob/main/Qwen3-1.7B-f16.gguf)를 사용합니다. 파일 크기가 약 4GB이므로 충분한 디스크 공간을 확보합니다.
+
+Windows CMD:
+
+```cmd
+curl.exe -L -o models\Qwen3-1.7B-f16.gguf "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-f16.gguf"
+```
+
+WSL / Linux / macOS:
+
+```bash
+curl -L -o models/Qwen3-1.7B-f16.gguf "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-f16.gguf"
+```
+
+다운로드 뒤 다음처럼 직접 Q8과 Q4를 생성합니다.
+
+```cmd
+python scripts\quantize_models.py --source "models\Qwen3-1.7B-f16.gguf" --output-dir models
+```
+
+생성 결과는 모두 로컬 `models/`에 보관합니다.
+
+```text
+models/
+├─ Qwen3-1.7B-f16.gguf
+├─ Qwen3-1.7B-f16-Q8_0.gguf
+├─ Qwen3-1.7B-f16-Q4_K_M.gguf
+└─ manifest.json
+```
+
+#### reference Q8/Q4 준비
+
+reference 모델은 같은 공식 저장소에서 자동으로 받을 수 있습니다. 아래 명령은 한 번에 하나씩 실행하며, 첫 번째 서버를 `Ctrl+C`로 종료한 뒤 다음 모델을 실행합니다. 처음 실행할 때 모델이 로컬 cache에 다운로드됩니다.
+
+```cmd
+llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q8_0 --host 127.0.0.1 --port 18080 --ctx-size 8192
+llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q4_K_M --host 127.0.0.1 --port 18080 --ctx-size 8192
+```
+
+reference 모델도 hash와 파일 크기를 manifest에 남길 경우, 다운로드된 `.gguf` 파일의 실제 경로를 확인해 `quantize_models.py`의 `--reference-q8`, `--reference-q4` 옵션으로 기록합니다. reference 모델과 cache도 GitHub에는 올리지 않습니다.
+
 ### 4. GPU PC에서 본 실험 실행
 
 서버는 한 번에 한 모델만 실행합니다. 첫 요청은 모델·CUDA kernel warm-up에 사용하고, 비교 결과에서는 warm-up을 제외합니다. 서버를 종료하려면 서버 터미널에서 `Ctrl+C`를 누릅니다.
@@ -160,6 +245,30 @@ python scripts\run_experiment.py --model-label self-FP16 --condition free --mode
 ```
 
 정상이면 `--limit 1`을 제거해 60개 execution task를 실행합니다. 이후 서버를 종료하고 같은 방식으로 self-Q8, self-Q4, reference-Q8, reference-Q4를 실행합니다. 모든 모델에서 prompt, tool schema, seed, temperature, context size, Agent loop, llama.cpp 버전을 동일하게 유지합니다.
+
+#### 서버 PID와 peak RAM 측정
+
+서버를 새로 시작할 때마다 PID가 바뀝니다. 반드시 현재 실행 중인 서버의 PID를 다시 확인합니다.
+
+Windows CMD:
+
+```cmd
+tasklist | findstr /I "llama"
+```
+
+WSL / Linux / macOS:
+
+```bash
+pgrep -af llama
+```
+
+예를 들어 현재 PID가 `32356`이면 `--server-pid 32356`을 추가합니다. 다음에 서버를 재시작하면 숫자를 새 PID로 바꿉니다.
+
+```cmd
+python scripts\run_experiment.py --model-label self-Q8 --condition free --model-path "models\Qwen3-1.7B-f16-Q8_0.gguf" --base-url http://127.0.0.1:18080 --server-pid 32356 --limit 1
+```
+
+`mean_peak_server_ram_mb`가 모델 서버의 peak RAM이고, `mean_max_ram_mb`는 Python 실행기의 RAM입니다. 서버 PID를 생략하면 서버 RAM 값은 `null`로 남습니다.
 
 GPU와 CPU는 실행 시간·메모리가 다르므로 서로의 효율성 수치를 직접 합치지 않습니다. 팀원이 여러 PC에서 실행한다면 결과 로그의 장비 정보와 `device_label`을 보존하고, 성공률·오류율과 효율성 지표를 각각 해석합니다.
 
@@ -185,7 +294,28 @@ logs/
 results/
 ```
 
-실험 결과를 팀원과 공유할 때는 원본 JSONL과 요약표를 별도 공유 저장소에 보관하거나, 필요한 요약 CSV만 Git에 올립니다. 모델 파일을 GitHub 일반 저장소에 커밋하지 않습니다.
+실험 결과는 GitHub가 아니라 팀 Google Drive의 공유 폴더에 올립니다. `results/`는 `.gitignore`에 포함되어 있으므로 `git add .`를 해도 GitHub에 업로드되지 않습니다.
+
+모델별로 다음 명령을 실행해 요약표와 그래프를 만듭니다.
+
+```cmd
+python scripts\analyze.py results\self-Q8_free_실행시각.jsonl results\self-Q8_recovery_실행시각.jsonl --output results\self-Q8_summary.json --csv-output results\self-Q8_summary.csv --plot-dir results\self-Q8_plots
+```
+
+Google Drive에는 다음 파일을 함께 올립니다.
+
+```text
+<날짜>_<장비명>_<모델명>/
+├─ execution 결과 JSONL
+├─ recovery 결과 JSONL
+├─ summary.json
+├─ summary.csv
+├─ plots/
+├─ models/manifest.json 사본
+└─ run_info.txt  (OS, CPU/GPU, RAM, VRAM, llama.cpp 버전, 서버 PID)
+```
+
+예시 폴더명은 `20261015_rtx4070_self-Q8`입니다. 모델 파일 자체는 용량이 크므로 Google Drive에도 필요할 때만 별도 공유하고, 결과 폴더에는 보통 hash와 manifest만 포함합니다.
 
 ## 1. 프로젝트 폴더로 이동
 
