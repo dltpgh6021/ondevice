@@ -1,5 +1,3 @@
-# The smoke harness uses only the Python standard library.
-# Install this before the LangGraph implementation is added.
-langgraph>=0.2.0
-pydantic>=2.0.0
-
+# The core smoke test uses only the Python standard library.
+# Install this optional package when peak RAM measurement is needed:
+# psutil>=6.0,<8.0

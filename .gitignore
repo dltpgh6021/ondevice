@@ -5,6 +5,8 @@ __pycache__/
 models/
 *.gguf
 
-logs/*
-.vscode/
+logs/
+results/
+results/*.json
 .env
+.vscode/

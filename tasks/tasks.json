@@ -1,0 +1,5233 @@
+[
+  {
+    "id": "shopping_001_h1",
+    "base_id": "shopping_001",
+    "domain": "shopping",
+    "horizon": 1,
+    "query": "키보드 keyboard_02을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_002_h1",
+    "base_id": "shopping_002",
+    "domain": "shopping",
+    "horizon": 1,
+    "query": "마우스 mouse_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_003_h1",
+    "base_id": "shopping_003",
+    "domain": "shopping",
+    "horizon": 1,
+    "query": "헤드셋 headset_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_004_h1",
+    "base_id": "shopping_004",
+    "domain": "shopping",
+    "horizon": 1,
+    "query": "웹캠 webcam_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_005_h1",
+    "base_id": "shopping_005",
+    "domain": "shopping",
+    "horizon": 1,
+    "query": "USB 허브 usb_hub_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_001_h1",
+    "base_id": "schedule_001",
+    "domain": "schedule",
+    "horizon": 1,
+    "query": "2026-10-20 10:00에 도서관 공부 일정을 national_museum에서 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_002_h1",
+    "base_id": "schedule_002",
+    "domain": "schedule",
+    "horizon": 1,
+    "query": "2026-10-21 14:00에 팀 회의 일정을 quiet_cafe에서 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_003_h1",
+    "base_id": "schedule_003",
+    "domain": "schedule",
+    "horizon": 1,
+    "query": "2026-10-22 09:30에 병원 방문 일정을 green_table에서 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_004_h1",
+    "base_id": "schedule_004",
+    "domain": "schedule",
+    "horizon": 1,
+    "query": "2026-10-20 16:00에 프로젝트 발표 일정을 han_river_park에서 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_005_h1",
+    "base_id": "schedule_005",
+    "domain": "schedule",
+    "horizon": 1,
+    "query": "2026-10-21 19:00에 저녁 운동 일정을 han_river_park에서 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_001_h1",
+    "base_id": "travel_001",
+    "domain": "travel",
+    "horizon": 1,
+    "query": "home에서 National Museum까지 이동 경로를 알려줘.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "home_national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_002_h1",
+    "base_id": "travel_002",
+    "domain": "travel",
+    "horizon": 1,
+    "query": "home에서 Quiet Cafe까지 이동 경로를 알려줘.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "home_quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_003_h1",
+    "base_id": "travel_003",
+    "domain": "travel",
+    "horizon": 1,
+    "query": "station에서 Han River Park까지 이동 경로를 알려줘.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "station_han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_004_h1",
+    "base_id": "travel_004",
+    "domain": "travel",
+    "horizon": 1,
+    "query": "office에서 Green Table까지 이동 경로를 알려줘.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "office_green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_005_h1",
+    "base_id": "travel_005",
+    "domain": "travel",
+    "horizon": 1,
+    "query": "hostel에서 Gwangalli Beach까지 이동 경로를 알려줘.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "hostel_gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_001_h1",
+    "base_id": "place_001",
+    "domain": "place",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 museum를 찾아줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_002_h1",
+    "base_id": "place_002",
+    "domain": "place",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 cafe를 찾아줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_003_h1",
+    "base_id": "place_003",
+    "domain": "place",
+    "horizon": 1,
+    "query": "Busan에서 평점이 가장 높은 beach를 찾아줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_004_h1",
+    "base_id": "place_004",
+    "domain": "place",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 restaurant를 찾아줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_005_h1",
+    "base_id": "place_005",
+    "domain": "place",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 park를 찾아줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_001_h3",
+    "base_id": "shopping_001",
+    "domain": "shopping",
+    "horizon": 3,
+    "query": "예산을 확인하고 키보드 목록 중 평점이 가장 높은 상품을 찾아 keyboard_02을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "keyboard"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_002_h3",
+    "base_id": "shopping_002",
+    "domain": "shopping",
+    "horizon": 3,
+    "query": "예산을 확인하고 마우스 목록 중 평점이 가장 높은 상품을 찾아 mouse_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "mouse"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_003_h3",
+    "base_id": "shopping_003",
+    "domain": "shopping",
+    "horizon": 3,
+    "query": "예산을 확인하고 헤드셋 목록 중 평점이 가장 높은 상품을 찾아 headset_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "headset"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_004_h3",
+    "base_id": "shopping_004",
+    "domain": "shopping",
+    "horizon": 3,
+    "query": "예산을 확인하고 웹캠 목록 중 평점이 가장 높은 상품을 찾아 webcam_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "webcam"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_005_h3",
+    "base_id": "shopping_005",
+    "domain": "shopping",
+    "horizon": 3,
+    "query": "예산을 확인하고 USB 허브 목록 중 평점이 가장 높은 상품을 찾아 usb_hub_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "usb_hub"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_001_h3",
+    "base_id": "schedule_001",
+    "domain": "schedule",
+    "horizon": 3,
+    "query": "날씨와 2026-10-20의 기존 일정을 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_002_h3",
+    "base_id": "schedule_002",
+    "domain": "schedule",
+    "horizon": 3,
+    "query": "날씨와 2026-10-21의 기존 일정을 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_003_h3",
+    "base_id": "schedule_003",
+    "domain": "schedule",
+    "horizon": 3,
+    "query": "날씨와 2026-10-22의 기존 일정을 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-22"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_004_h3",
+    "base_id": "schedule_004",
+    "domain": "schedule",
+    "horizon": 3,
+    "query": "날씨와 2026-10-20의 기존 일정을 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_005_h3",
+    "base_id": "schedule_005",
+    "domain": "schedule",
+    "horizon": 3,
+    "query": "날씨와 2026-10-21의 기존 일정을 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_001_h3",
+    "base_id": "travel_001",
+    "domain": "travel",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 home에서 National Museum까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_002_h3",
+    "base_id": "travel_002",
+    "domain": "travel",
+    "horizon": 3,
+    "query": "2026-10-21 날씨를 확인하고 home에서 Quiet Cafe까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_003_h3",
+    "base_id": "travel_003",
+    "domain": "travel",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 station에서 Han River Park까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_004_h3",
+    "base_id": "travel_004",
+    "domain": "travel",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 office에서 Green Table까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 식사",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 식사",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_005_h3",
+    "base_id": "travel_005",
+    "domain": "travel",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 hostel에서 Gwangalli Beach까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Busan",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_001_h3",
+    "base_id": "place_001",
+    "domain": "place",
+    "horizon": 3,
+    "query": "Seoul에서 museum를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 관람",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 관람",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_002_h3",
+    "base_id": "place_002",
+    "domain": "place",
+    "horizon": 3,
+    "query": "Seoul에서 cafe를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_003_h3",
+    "base_id": "place_003",
+    "domain": "place",
+    "horizon": 3,
+    "query": "Busan에서 beach를 찾고 hostel에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_004_h3",
+    "base_id": "place_004",
+    "domain": "place",
+    "horizon": 3,
+    "query": "Seoul에서 restaurant를 찾고 office에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "식당 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "식당 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_005_h3",
+    "base_id": "place_005",
+    "domain": "place",
+    "horizon": 3,
+    "query": "Seoul에서 park를 찾고 station에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 1,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_001_h5",
+    "base_id": "shopping_001",
+    "domain": "shopping",
+    "horizon": 5,
+    "query": "예산과 키보드 목록을 확인하고 현재 장바구니를 점검한 뒤 keyboard_02을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "keyboard"
+        }
+      },
+      {
+        "tool": "get_cart",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "keyboard"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_002_h5",
+    "base_id": "shopping_002",
+    "domain": "shopping",
+    "horizon": 5,
+    "query": "예산과 마우스 목록을 확인하고 현재 장바구니를 점검한 뒤 mouse_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "mouse"
+        }
+      },
+      {
+        "tool": "get_cart",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "mouse"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_003_h5",
+    "base_id": "shopping_003",
+    "domain": "shopping",
+    "horizon": 5,
+    "query": "예산과 헤드셋 목록을 확인하고 현재 장바구니를 점검한 뒤 headset_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "headset"
+        }
+      },
+      {
+        "tool": "get_cart",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "headset"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_004_h5",
+    "base_id": "shopping_004",
+    "domain": "shopping",
+    "horizon": 5,
+    "query": "예산과 웹캠 목록을 확인하고 현재 장바구니를 점검한 뒤 webcam_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "webcam"
+        }
+      },
+      {
+        "tool": "get_cart",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "webcam"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "shopping_005_h5",
+    "base_id": "shopping_005",
+    "domain": "shopping",
+    "horizon": 5,
+    "query": "예산과 USB 허브 목록을 확인하고 현재 장바구니를 점검한 뒤 usb_hub_01을 장바구니에 담아줘.",
+    "gold_actions": [
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "usb_hub"
+        }
+      },
+      {
+        "tool": "get_cart",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "usb_hub"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_001_h5",
+    "base_id": "schedule_001",
+    "domain": "schedule",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_002_h5",
+    "base_id": "schedule_002",
+    "domain": "schedule",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_003_h5",
+    "base_id": "schedule_003",
+    "domain": "schedule",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-22"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_004_h5",
+    "base_id": "schedule_004",
+    "domain": "schedule",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "schedule_005_h5",
+    "base_id": "schedule_005",
+    "domain": "schedule",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_001_h5",
+    "base_id": "travel_001",
+    "domain": "travel",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 National Museum 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_002_h5",
+    "base_id": "travel_002",
+    "domain": "travel",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Quiet Cafe 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_003_h5",
+    "base_id": "travel_003",
+    "domain": "travel",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Han River Park 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_004_h5",
+    "base_id": "travel_004",
+    "domain": "travel",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Green Table 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 식사",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 식사",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "travel_005_h5",
+    "base_id": "travel_005",
+    "domain": "travel",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Gwangalli Beach 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Busan",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_001_h5",
+    "base_id": "place_001",
+    "domain": "place",
+    "horizon": 5,
+    "query": "날씨, museum 목록, 이동 경로, 기존 일정을 확인한 뒤 박물관 관람 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 관람",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 관람",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_002_h5",
+    "base_id": "place_002",
+    "domain": "place",
+    "horizon": 5,
+    "query": "날씨, cafe 목록, 이동 경로, 기존 일정을 확인한 뒤 카페 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_003_h5",
+    "base_id": "place_003",
+    "domain": "place",
+    "horizon": 5,
+    "query": "날씨, beach 목록, 이동 경로, 기존 일정을 확인한 뒤 해변 산책 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Busan",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_004_h5",
+    "base_id": "place_004",
+    "domain": "place",
+    "horizon": 5,
+    "query": "날씨, restaurant 목록, 이동 경로, 기존 일정을 확인한 뒤 식당 방문 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "식당 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "식당 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "place_005_h5",
+    "base_id": "place_005",
+    "domain": "place",
+    "horizon": 5,
+    "query": "날씨, park 목록, 이동 경로, 기존 일정을 확인한 뒤 공원 산책 일정을 등록해줘.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 2,
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    },
+    "task_type": "execution"
+  },
+  {
+    "id": "recovery_shopping_001_h1",
+    "base_id": "shopping_001_h1",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "키보드 keyboard_02을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 keyboard_02을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 keyboard_02만 포함하도록 복구해줘. 원래 요청: 키보드 keyboard_02을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_cart_item",
+        "arguments": {
+          "wrong_product_id": "keyboard_99",
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_002_h1",
+    "base_id": "shopping_002_h1",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "마우스 mouse_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 mouse_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 mouse_01만 포함하도록 복구해줘. 원래 요청: 마우스 mouse_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_cart_item",
+        "arguments": {
+          "wrong_product_id": "keyboard_99",
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_003_h1",
+    "base_id": "shopping_003_h1",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "헤드셋 headset_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 headset_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 headset_01만 포함하도록 복구해줘. 원래 요청: 헤드셋 headset_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_cart_item",
+        "arguments": {
+          "wrong_product_id": "keyboard_99",
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_004_h1",
+    "base_id": "shopping_004_h1",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "웹캠 webcam_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 webcam_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 webcam_01만 포함하도록 복구해줘. 원래 요청: 웹캠 webcam_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_cart_item",
+        "arguments": {
+          "wrong_product_id": "keyboard_99",
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_005_h1",
+    "base_id": "shopping_005_h1",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "USB 허브 usb_hub_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 usb_hub_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 usb_hub_01만 포함하도록 복구해줘. 원래 요청: USB 허브 usb_hub_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_cart_item",
+        "arguments": {
+          "wrong_product_id": "keyboard_99",
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_schedule_001_h1",
+    "base_id": "schedule_001_h1",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "2026-10-20 10:00에 도서관 공부 일정을 national_museum에서 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '도서관 공부' (2026-10-20 10:00, national_museum)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 2026-10-20 10:00에 도서관 공부 일정을 national_museum에서 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_event",
+        "arguments": {
+          "old_title": "잘못된 일정",
+          "old_date": "2026-10-20",
+          "old_time": "00:00",
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_002_h1",
+    "base_id": "schedule_002_h1",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "2026-10-21 14:00에 팀 회의 일정을 quiet_cafe에서 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '팀 회의' (2026-10-21 14:00, quiet_cafe)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 2026-10-21 14:00에 팀 회의 일정을 quiet_cafe에서 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_event",
+        "arguments": {
+          "old_title": "잘못된 일정",
+          "old_date": "2026-10-21",
+          "old_time": "00:00",
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_003_h1",
+    "base_id": "schedule_003_h1",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "2026-10-22 09:30에 병원 방문 일정을 green_table에서 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '병원 방문' (2026-10-22 09:30, green_table)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 2026-10-22 09:30에 병원 방문 일정을 green_table에서 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-22 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_event",
+        "arguments": {
+          "old_title": "잘못된 일정",
+          "old_date": "2026-10-22",
+          "old_time": "00:00",
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-22",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_004_h1",
+    "base_id": "schedule_004_h1",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "2026-10-20 16:00에 프로젝트 발표 일정을 han_river_park에서 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '프로젝트 발표' (2026-10-20 16:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 2026-10-20 16:00에 프로젝트 발표 일정을 han_river_park에서 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_event",
+        "arguments": {
+          "old_title": "잘못된 일정",
+          "old_date": "2026-10-20",
+          "old_time": "00:00",
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_005_h1",
+    "base_id": "schedule_005_h1",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "2026-10-21 19:00에 저녁 운동 일정을 han_river_park에서 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '저녁 운동' (2026-10-21 19:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 2026-10-21 19:00에 저녁 운동 일정을 han_river_park에서 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "replace_event",
+        "arguments": {
+          "old_title": "잘못된 일정",
+          "old_date": "2026-10-21",
+          "old_time": "00:00",
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_001_h1",
+    "base_id": "travel_001_h1",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "home에서 National Museum까지 이동 경로를 알려줘.",
+    "recovery_query": "회복 요청: 이전 결과는 신뢰할 수 없습니다. home에서 National Museum까지 이동 경로를 알려줘. 올바른 경로를 다시 조회하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 이동 결과가 잘못된 route_id 'stale_route'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "route_id": "stale_route"
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "home_national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_002_h1",
+    "base_id": "travel_002_h1",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "home에서 Quiet Cafe까지 이동 경로를 알려줘.",
+    "recovery_query": "회복 요청: 이전 결과는 신뢰할 수 없습니다. home에서 Quiet Cafe까지 이동 경로를 알려줘. 올바른 경로를 다시 조회하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 이동 결과가 잘못된 route_id 'stale_route'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "route_id": "stale_route"
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "home_quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_003_h1",
+    "base_id": "travel_003_h1",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "station에서 Han River Park까지 이동 경로를 알려줘.",
+    "recovery_query": "회복 요청: 이전 결과는 신뢰할 수 없습니다. station에서 Han River Park까지 이동 경로를 알려줘. 올바른 경로를 다시 조회하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 이동 결과가 잘못된 route_id 'stale_route'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "route_id": "stale_route"
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "station_han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_004_h1",
+    "base_id": "travel_004_h1",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "office에서 Green Table까지 이동 경로를 알려줘.",
+    "recovery_query": "회복 요청: 이전 결과는 신뢰할 수 없습니다. office에서 Green Table까지 이동 경로를 알려줘. 올바른 경로를 다시 조회하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 이동 결과가 잘못된 route_id 'stale_route'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "route_id": "stale_route"
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "office_green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_005_h1",
+    "base_id": "travel_005_h1",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "hostel에서 Gwangalli Beach까지 이동 경로를 알려줘.",
+    "recovery_query": "회복 요청: 이전 결과는 신뢰할 수 없습니다. hostel에서 Gwangalli Beach까지 이동 경로를 알려줘. 올바른 경로를 다시 조회하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 이동 결과가 잘못된 route_id 'stale_route'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "route_id": "stale_route"
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "route_id",
+        "value": "hostel_gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_001_h1",
+    "base_id": "place_001_h1",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 museum를 찾아줘.",
+    "recovery_query": "회복 요청: 이전 장소 검색 결과는 신뢰할 수 없습니다. Seoul에서 평점이 가장 높은 museum를 찾아줘.에 맞는 장소를 다시 검색하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 장소 검색 결과가 잘못된 top_place_id 'stale_place'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "top_place_id": "stale_place",
+        "places": []
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_002_h1",
+    "base_id": "place_002_h1",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 cafe를 찾아줘.",
+    "recovery_query": "회복 요청: 이전 장소 검색 결과는 신뢰할 수 없습니다. Seoul에서 평점이 가장 높은 cafe를 찾아줘.에 맞는 장소를 다시 검색하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 장소 검색 결과가 잘못된 top_place_id 'stale_place'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "top_place_id": "stale_place",
+        "places": []
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_003_h1",
+    "base_id": "place_003_h1",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "Busan에서 평점이 가장 높은 beach를 찾아줘.",
+    "recovery_query": "회복 요청: 이전 장소 검색 결과는 신뢰할 수 없습니다. Busan에서 평점이 가장 높은 beach를 찾아줘.에 맞는 장소를 다시 검색하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 장소 검색 결과가 잘못된 top_place_id 'stale_place'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "top_place_id": "stale_place",
+        "places": []
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_004_h1",
+    "base_id": "place_004_h1",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 restaurant를 찾아줘.",
+    "recovery_query": "회복 요청: 이전 장소 검색 결과는 신뢰할 수 없습니다. Seoul에서 평점이 가장 높은 restaurant를 찾아줘.에 맞는 장소를 다시 검색하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 장소 검색 결과가 잘못된 top_place_id 'stale_place'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "top_place_id": "stale_place",
+        "places": []
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_005_h1",
+    "base_id": "place_005_h1",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 1,
+    "query": "Seoul에서 평점이 가장 높은 park를 찾아줘.",
+    "recovery_query": "회복 요청: 이전 장소 검색 결과는 신뢰할 수 없습니다. Seoul에서 평점이 가장 높은 park를 찾아줘.에 맞는 장소를 다시 검색하여 결과를 교체해줘.",
+    "error_description": "회복 시작 상태: 이전 장소 검색 결과가 잘못된 top_place_id 'stale_place'로 저장되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "stale_result",
+      "stale_result": {
+        "ok": true,
+        "top_place_id": "stale_place",
+        "places": []
+      }
+    },
+    "success_condition": {
+      "last_result_field_equals": {
+        "field": "top_place_id",
+        "value": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_shopping_001_h3",
+    "base_id": "shopping_001_h3",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "예산을 확인하고 키보드 목록 중 평점이 가장 높은 상품을 찾아 keyboard_02을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 keyboard_02을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 keyboard_02만 포함하도록 복구해줘. 원래 요청: 예산을 확인하고 키보드 목록 중 평점이 가장 높은 상품을 찾아 keyboard_02을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_002_h3",
+    "base_id": "shopping_002_h3",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "예산을 확인하고 마우스 목록 중 평점이 가장 높은 상품을 찾아 mouse_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 mouse_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 mouse_01만 포함하도록 복구해줘. 원래 요청: 예산을 확인하고 마우스 목록 중 평점이 가장 높은 상품을 찾아 mouse_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_003_h3",
+    "base_id": "shopping_003_h3",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "예산을 확인하고 헤드셋 목록 중 평점이 가장 높은 상품을 찾아 headset_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 headset_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 headset_01만 포함하도록 복구해줘. 원래 요청: 예산을 확인하고 헤드셋 목록 중 평점이 가장 높은 상품을 찾아 headset_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_004_h3",
+    "base_id": "shopping_004_h3",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "예산을 확인하고 웹캠 목록 중 평점이 가장 높은 상품을 찾아 webcam_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 webcam_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 webcam_01만 포함하도록 복구해줘. 원래 요청: 예산을 확인하고 웹캠 목록 중 평점이 가장 높은 상품을 찾아 webcam_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_005_h3",
+    "base_id": "shopping_005_h3",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "예산을 확인하고 USB 허브 목록 중 평점이 가장 높은 상품을 찾아 usb_hub_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 usb_hub_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 usb_hub_01만 포함하도록 복구해줘. 원래 요청: 예산을 확인하고 USB 허브 목록 중 평점이 가장 높은 상품을 찾아 usb_hub_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_schedule_001_h3",
+    "base_id": "schedule_001_h3",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "날씨와 2026-10-20의 기존 일정을 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '도서관 공부' (2026-10-20 10:00, national_museum)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨와 2026-10-20의 기존 일정을 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_002_h3",
+    "base_id": "schedule_002_h3",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "날씨와 2026-10-21의 기존 일정을 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '팀 회의' (2026-10-21 14:00, quiet_cafe)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨와 2026-10-21의 기존 일정을 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_003_h3",
+    "base_id": "schedule_003_h3",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "날씨와 2026-10-22의 기존 일정을 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '병원 방문' (2026-10-22 09:30, green_table)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨와 2026-10-22의 기존 일정을 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-22 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-22"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-22",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-22",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_004_h3",
+    "base_id": "schedule_004_h3",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "날씨와 2026-10-20의 기존 일정을 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '프로젝트 발표' (2026-10-20 16:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨와 2026-10-20의 기존 일정을 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_005_h3",
+    "base_id": "schedule_005_h3",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "날씨와 2026-10-21의 기존 일정을 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '저녁 운동' (2026-10-21 19:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨와 2026-10-21의 기존 일정을 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_001_h3",
+    "base_id": "travel_001_h3",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 home에서 National Museum까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 2026-10-20 날씨를 확인하고 home에서 National Museum까지 경로를 확인한 뒤 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '박물관 방문' (2026-10-20 18:00, national_museum)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_002_h3",
+    "base_id": "travel_002_h3",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "2026-10-21 날씨를 확인하고 home에서 Quiet Cafe까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 2026-10-21 날씨를 확인하고 home에서 Quiet Cafe까지 경로를 확인한 뒤 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '카페 방문' (2026-10-21 18:00, quiet_cafe)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_003_h3",
+    "base_id": "travel_003_h3",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 station에서 Han River Park까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 2026-10-20 날씨를 확인하고 station에서 Han River Park까지 경로를 확인한 뒤 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '공원 산책' (2026-10-20 18:00, han_river_park)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_004_h3",
+    "base_id": "travel_004_h3",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 office에서 Green Table까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 2026-10-20 날씨를 확인하고 office에서 Green Table까지 경로를 확인한 뒤 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '저녁 식사' (2026-10-20 18:00, green_table)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 식사",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 식사",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_005_h3",
+    "base_id": "travel_005_h3",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "2026-10-20 날씨를 확인하고 hostel에서 Gwangalli Beach까지 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 2026-10-20 날씨를 확인하고 hostel에서 Gwangalli Beach까지 경로를 확인한 뒤 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '해변 방문' (2026-10-20 18:00, gwangalli_beach)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_001_h3",
+    "base_id": "place_001_h3",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "Seoul에서 museum를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '박물관 관람' (2026-10-20 18:00, national_museum)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: Seoul에서 museum를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 관람",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 관람",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_002_h3",
+    "base_id": "place_002_h3",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "Seoul에서 cafe를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '카페 방문' (2026-10-21 18:00, quiet_cafe)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: Seoul에서 cafe를 찾고 home에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_003_h3",
+    "base_id": "place_003_h3",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "Busan에서 beach를 찾고 hostel에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '해변 산책' (2026-10-20 18:00, gwangalli_beach)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: Busan에서 beach를 찾고 hostel에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_004_h3",
+    "base_id": "place_004_h3",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "Seoul에서 restaurant를 찾고 office에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '식당 방문' (2026-10-20 18:00, green_table)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: Seoul에서 restaurant를 찾고 office에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "식당 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "식당 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_005_h3",
+    "base_id": "place_005_h3",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 3,
+    "query": "Seoul에서 park를 찾고 station에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '공원 산책' (2026-10-20 18:00, han_river_park)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: Seoul에서 park를 찾고 station에서 이동 경로를 확인한 뒤 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_shopping_001_h5",
+    "base_id": "shopping_001_h5",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "예산과 키보드 목록을 확인하고 현재 장바구니를 점검한 뒤 keyboard_02을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 keyboard_02을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 keyboard_02만 포함하도록 복구해줘. 원래 요청: 예산과 키보드 목록을 확인하고 현재 장바구니를 점검한 뒤 keyboard_02을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "keyboard"
+        }
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "keyboard_02"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "keyboard_02"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_002_h5",
+    "base_id": "shopping_002_h5",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "예산과 마우스 목록을 확인하고 현재 장바구니를 점검한 뒤 mouse_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 mouse_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 mouse_01만 포함하도록 복구해줘. 원래 요청: 예산과 마우스 목록을 확인하고 현재 장바구니를 점검한 뒤 mouse_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "mouse"
+        }
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "mouse_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "mouse_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_003_h5",
+    "base_id": "shopping_003_h5",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "예산과 헤드셋 목록을 확인하고 현재 장바구니를 점검한 뒤 headset_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 headset_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 headset_01만 포함하도록 복구해줘. 원래 요청: 예산과 헤드셋 목록을 확인하고 현재 장바구니를 점검한 뒤 headset_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "headset"
+        }
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "headset_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "headset_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_004_h5",
+    "base_id": "shopping_004_h5",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "예산과 웹캠 목록을 확인하고 현재 장바구니를 점검한 뒤 webcam_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 webcam_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 webcam_01만 포함하도록 복구해줘. 원래 요청: 예산과 웹캠 목록을 확인하고 현재 장바구니를 점검한 뒤 webcam_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "webcam"
+        }
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "webcam_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "webcam_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_shopping_005_h5",
+    "base_id": "shopping_005_h5",
+    "domain": "shopping",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "예산과 USB 허브 목록을 확인하고 현재 장바구니를 점검한 뒤 usb_hub_01을 장바구니에 담아줘.",
+    "recovery_query": "회복 요청: 현재 장바구니에는 잘못된 상품 keyboard_99이(가) 담겨 있습니다. 원래 요청은 usb_hub_01을(를) 장바구니에 담는 것입니다. 잘못된 상태를 확인하고 최종 장바구니가 usb_hub_01만 포함하도록 복구해줘. 원래 요청: 예산과 USB 허브 목록을 확인하고 현재 장바구니를 점검한 뒤 usb_hub_01을 장바구니에 담아줘.",
+    "error_description": "회복 시작 상태: 장바구니에 요청하지 않은 상품 keyboard_99이(가) 이미 담겨 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "inspect_state",
+        "arguments": {}
+      },
+      {
+        "tool": "get_budget",
+        "arguments": {}
+      },
+      {
+        "tool": "search_product",
+        "arguments": {
+          "category": "usb_hub"
+        }
+      },
+      {
+        "tool": "remove_from_cart",
+        "arguments": {
+          "product_id": "keyboard_99"
+        }
+      },
+      {
+        "tool": "add_to_cart",
+        "arguments": {
+          "product_id": "usb_hub_01"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_cart_item",
+      "wrong_product_id": "keyboard_99"
+    },
+    "success_condition": {
+      "cart_equals": [
+        "usb_hub_01"
+      ]
+    }
+  },
+  {
+    "id": "recovery_schedule_001_h5",
+    "base_id": "schedule_001_h5",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '도서관 공부' (2026-10-20 10:00, national_museum)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 도서관 공부 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "도서관 공부",
+          "date": "2026-10-20",
+          "time": "10:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "도서관 공부",
+        "date": "2026-10-20",
+        "time": "10:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_002_h5",
+    "base_id": "schedule_002_h5",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '팀 회의' (2026-10-21 14:00, quiet_cafe)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 팀 회의 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "팀 회의",
+          "date": "2026-10-21",
+          "time": "14:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "팀 회의",
+        "date": "2026-10-21",
+        "time": "14:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_003_h5",
+    "base_id": "schedule_003_h5",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '병원 방문' (2026-10-22 09:30, green_table)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 병원 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-22 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-22"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-22",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "병원 방문",
+          "date": "2026-10-22",
+          "time": "09:30",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-22",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "병원 방문",
+        "date": "2026-10-22",
+        "time": "09:30",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_004_h5",
+    "base_id": "schedule_004_h5",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '프로젝트 발표' (2026-10-20 16:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 프로젝트 발표 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "프로젝트 발표",
+          "date": "2026-10-20",
+          "time": "16:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "프로젝트 발표",
+        "date": "2026-10-20",
+        "time": "16:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_schedule_005_h5",
+    "base_id": "schedule_005_h5",
+    "domain": "schedule",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정 '잘못된 일정'이(가) 있습니다. 원래 요청된 일정은 '저녁 운동' (2026-10-21 19:00, han_river_park)입니다. 잘못된 일정을 정리하고 원래 일정만 남도록 복구해줘. 원래 요청: 날씨, 주변 장소, 기존 일정, 이동 경로를 차례로 확인한 뒤 저녁 운동 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 운동",
+          "date": "2026-10-21",
+          "time": "19:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 운동",
+        "date": "2026-10-21",
+        "time": "19:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_001_h5",
+    "base_id": "travel_001_h5",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 National Museum 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 National Museum 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '박물관 방문' (2026-10-20 18:00, national_museum)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_002_h5",
+    "base_id": "travel_002_h5",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Quiet Cafe 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Quiet Cafe 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '카페 방문' (2026-10-21 18:00, quiet_cafe)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_003_h5",
+    "base_id": "travel_003_h5",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Han River Park 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Han River Park 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '공원 산책' (2026-10-20 18:00, han_river_park)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_004_h5",
+    "base_id": "travel_004_h5",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Green Table 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Green Table 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '저녁 식사' (2026-10-20 18:00, green_table)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Seoul",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "저녁 식사",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "저녁 식사",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_travel_005_h5",
+    "base_id": "travel_005_h5",
+    "domain": "travel",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Gwangalli Beach 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 달력에 잘못된 일정이 있습니다. 날씨, 주변 장소, 이동 경로, 기존 일정을 확인한 뒤 Gwangalli Beach 방문 일정을 등록해줘.에 필요한 정보도 확인하면서 잘못된 일정을 '해변 방문' (2026-10-20 18:00, gwangalli_beach)로 복구해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "get_weather",
+        "arguments": {
+          "city": "Busan",
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_001_h5",
+    "base_id": "place_001_h5",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, museum 목록, 이동 경로, 기존 일정을 확인한 뒤 박물관 관람 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '박물관 관람' (2026-10-20 18:00, national_museum)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: 날씨, museum 목록, 이동 경로, 기존 일정을 확인한 뒤 박물관 관람 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "museum"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "national_museum"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "박물관 관람",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "national_museum"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "박물관 관람",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "national_museum"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_002_h5",
+    "base_id": "place_002_h5",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, cafe 목록, 이동 경로, 기존 일정을 확인한 뒤 카페 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '카페 방문' (2026-10-21 18:00, quiet_cafe)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: 날씨, cafe 목록, 이동 경로, 기존 일정을 확인한 뒤 카페 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-21 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "cafe"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "home",
+          "destination": "quiet_cafe"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-21"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-21",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "카페 방문",
+          "date": "2026-10-21",
+          "time": "18:00",
+          "location": "quiet_cafe"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-21",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "카페 방문",
+        "date": "2026-10-21",
+        "time": "18:00",
+        "location": "quiet_cafe"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_003_h5",
+    "base_id": "place_003_h5",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, beach 목록, 이동 경로, 기존 일정을 확인한 뒤 해변 산책 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '해변 산책' (2026-10-20 18:00, gwangalli_beach)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: 날씨, beach 목록, 이동 경로, 기존 일정을 확인한 뒤 해변 산책 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Busan",
+          "category": "beach"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "hostel",
+          "destination": "gwangalli_beach"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "해변 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "gwangalli_beach"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "해변 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "gwangalli_beach"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_004_h5",
+    "base_id": "place_004_h5",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, restaurant 목록, 이동 경로, 기존 일정을 확인한 뒤 식당 방문 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '식당 방문' (2026-10-20 18:00, green_table)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: 날씨, restaurant 목록, 이동 경로, 기존 일정을 확인한 뒤 식당 방문 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "restaurant"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "office",
+          "destination": "green_table"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "식당 방문",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "green_table"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "식당 방문",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "green_table"
+      }
+    }
+  },
+  {
+    "id": "recovery_place_005_h5",
+    "base_id": "place_005_h5",
+    "domain": "place",
+    "task_type": "recovery",
+    "horizon": 5,
+    "query": "날씨, park 목록, 이동 경로, 기존 일정을 확인한 뒤 공원 산책 일정을 등록해줘.",
+    "recovery_query": "회복 요청: 장소 검색과 함께 달력의 잘못된 상태를 복구해야 합니다. '공원 산책' (2026-10-20 18:00, han_river_park)을(를) 남기고 잘못된 일정을 제거해줘. 원래 요청: 날씨, park 목록, 이동 경로, 기존 일정을 확인한 뒤 공원 산책 일정을 등록해줘.",
+    "error_description": "회복 시작 상태: 달력에 잘못된 일정 '잘못된 일정' (2026-10-20 00:00, wrong_place)이(가) 이미 등록되어 있습니다.",
+    "gold_actions": [
+      {
+        "tool": "search_place",
+        "arguments": {
+          "city": "Seoul",
+          "category": "park"
+        }
+      },
+      {
+        "tool": "get_route",
+        "arguments": {
+          "origin": "station",
+          "destination": "han_river_park"
+        }
+      },
+      {
+        "tool": "get_calendar",
+        "arguments": {
+          "date": "2026-10-20"
+        }
+      },
+      {
+        "tool": "delete_event",
+        "arguments": {
+          "title": "잘못된 일정",
+          "date": "2026-10-20",
+          "time": "00:00"
+        }
+      },
+      {
+        "tool": "create_event",
+        "arguments": {
+          "title": "공원 산책",
+          "date": "2026-10-20",
+          "time": "18:00",
+          "location": "han_river_park"
+        }
+      }
+    ],
+    "checkpoint_step": 0,
+    "error_injection": {
+      "type": "wrong_event",
+      "wrong_event": {
+        "title": "잘못된 일정",
+        "date": "2026-10-20",
+        "time": "00:00",
+        "location": "wrong_place"
+      }
+    },
+    "success_condition": {
+      "calendar_contains": {
+        "title": "공원 산책",
+        "date": "2026-10-20",
+        "time": "18:00",
+        "location": "han_river_park"
+      }
+    }
+  }
+]
+

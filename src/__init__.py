@@ -1,2 +1,1 @@
-"""Starter package for the quantized Agent experiment."""
-
+"""Minimal quantized-Agent stability experiment package."""
