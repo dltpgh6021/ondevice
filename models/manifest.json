@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-14T16:25:40.740353+00:00",
+  "host": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]"
+  },
+  "source_model": {
+    "label": "Qwen3-1.7B-FP16",
+    "path": "models/Qwen3-1.7B-f16.gguf",
+    "filename": "Qwen3-1.7B-f16.gguf",
+    "quantization": "F16",
+    "size_bytes": 4069679200,
+    "size_mb": 3881.149,
+    "sha256": "f116fb8bb3237b7ee6acb2ea5058f4459ec6eb83f9bdbc890035935d45086a72"
+  },
+  "variants": [
+    {
+      "label": "Qwen3-1.7B-FP16",
+      "path": "models/Qwen3-1.7B-f16.gguf",
+      "filename": "Qwen3-1.7B-f16.gguf",
+      "quantization": "F16",
+      "size_bytes": 4069679200,
+      "size_mb": 3881.149,
+      "sha256": "f116fb8bb3237b7ee6acb2ea5058f4459ec6eb83f9bdbc890035935d45086a72"
+    },
+    {
+      "label": "Qwen3-1.7B-FP16-Q8_0",
+      "path": "models/Qwen3-1.7B-f16-Q8_0.gguf",
+      "filename": "Qwen3-1.7B-f16-Q8_0.gguf",
+      "quantization": "Q8_0",
+      "size_bytes": 2165039200,
+      "size_mb": 2064.742,
+      "sha256": "9860780f3a1fab1f8f909a1b549ea3e62c22d19ab1a492b3a1026b38c5bd3ec3"
+    },
+    {
+      "label": "Qwen3-1.7B-FP16-Q4_K_M",
+      "path": "models/Qwen3-1.7B-f16-Q4_K_M.gguf",
+      "filename": "Qwen3-1.7B-f16-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "size_bytes": 1282439264,
+      "size_mb": 1223.029,
+      "sha256": "a7f6720f68f4a4567ebf7e3257041dd0b72077b518efe56890aec3516b59b9de"
+    }
+  ],
+  "reference_variants": [],
+  "toolchain": {
+    "llama_executable": "llama",
+    "llama_version": "version: 0.5.0-dev (build 11406, commit 8216c8462)\nbuilt with Clang 20.1.8 for Windows x86_64",
+    "quantizer_executable": "llama-quantize",
+    "q8_type": "Q8_0",
+    "q4_type": "Q4_K_M",
+    "threads": "default",
+    "commands": [
+      {
+        "quantization": "Q8_0",
+        "output": "models/Qwen3-1.7B-f16-Q8_0.gguf",
+        "argv": [
+          "llama-quantize",
+          "models/Qwen3-1.7B-f16.gguf",
+          "models/Qwen3-1.7B-f16-Q8_0.gguf",
+          "Q8_0"
+        ],
+        "command": "llama-quantize models/Qwen3-1.7B-f16.gguf models/Qwen3-1.7B-f16-Q8_0.gguf Q8_0"
+      },
+      {
+        "quantization": "Q4_K_M",
+        "output": "models/Qwen3-1.7B-f16-Q4_K_M.gguf",
+        "argv": [
+          "llama-quantize",
+          "models/Qwen3-1.7B-f16.gguf",
+          "models/Qwen3-1.7B-f16-Q4_K_M.gguf",
+          "Q4_K_M"
+        ],
+        "command": "llama-quantize models/Qwen3-1.7B-f16.gguf models/Qwen3-1.7B-f16-Q4_K_M.gguf Q4_K_M"
+      }
+    ]
+  },
+  "experiment_note": "Q8과 Q4는 동일한 unquantized source GGUF에서 각각 독립적으로 생성했습니다."
+}
