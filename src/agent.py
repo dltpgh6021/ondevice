@@ -123,6 +123,10 @@ def run_agent(
         )
         event["tool_result"] = result
         event["state_hash_after"] = environment.state_hash()
+        try:
+            event["success_after_action"] = environment.check_success(task.success_condition)
+        except Exception:
+            event["success_after_action"] = False
         if not result.get("ok", False):
             event["tool_error"] = result.get("error", "tool_error")
         trace["events"].append(event)

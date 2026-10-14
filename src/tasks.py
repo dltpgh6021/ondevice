@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,7 +73,94 @@ def load_tasks(path: str | Path) -> list[Task]:
     data = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("task file must contain a JSON list")
-    return [Task.from_mapping(item) for item in data]
+    tasks = [Task.from_mapping(item) for item in data]
+    validate_task_set(tasks)
+    return tasks
+
+
+def validate_task_set(
+    tasks: list[Task],
+    *,
+    expected_total: int | None = None,
+    expected_counts: dict[str, int] | None = None,
+    required_horizons: set[int] | None = None,
+    expected_per_type_horizon: int | None = None,
+    require_pairs: bool = False,
+) -> dict[str, Any]:
+    """Validate collection-level integrity and return count diagnostics."""
+    errors: list[str] = []
+    ids = [task.task_id for task in tasks]
+    duplicate_ids = sorted(task_id for task_id, count in Counter(ids).items() if count > 1)
+    if duplicate_ids:
+        errors.append(f"duplicate task ids: {', '.join(duplicate_ids)}")
+
+    if expected_total is not None and len(tasks) != expected_total:
+        errors.append(f"expected {expected_total} tasks, found {len(tasks)}")
+
+    by_type = Counter(task.task_type for task in tasks)
+    if expected_counts:
+        for task_type, expected in expected_counts.items():
+            found = by_type.get(task_type, 0)
+            if found != expected:
+                errors.append(f"expected {expected} {task_type} tasks, found {found}")
+
+    by_horizon = Counter(task.horizon for task in tasks)
+    if required_horizons:
+        missing_horizons = sorted(required_horizons - set(by_horizon))
+        if missing_horizons:
+            errors.append(f"missing horizons: {', '.join(map(str, missing_horizons))}")
+
+    by_type_horizon = Counter((task.task_type, task.horizon) for task in tasks)
+    if expected_per_type_horizon is not None and required_horizons:
+        for task_type in ("execution", "recovery"):
+            for horizon in sorted(required_horizons):
+                found = by_type_horizon.get((task_type, horizon), 0)
+                if found != expected_per_type_horizon:
+                    errors.append(
+                        f"expected {expected_per_type_horizon} {task_type} tasks at horizon {horizon}, found {found}"
+                    )
+
+    if require_pairs:
+        execution_by_id = {
+            task.task_id: task for task in tasks if task.task_type == "execution"
+        }
+        recovery_tasks = [task for task in tasks if task.task_type == "recovery"]
+        for recovery in recovery_tasks:
+            execution = execution_by_id.get(recovery.base_id)
+            if execution is None:
+                errors.append(
+                    f"recovery task {recovery.task_id} has no execution pair for base_id={recovery.base_id}"
+                )
+                continue
+            if recovery.horizon != execution.horizon:
+                errors.append(
+                    f"pair horizon mismatch: {execution.task_id}={execution.horizon}, "
+                    f"{recovery.task_id}={recovery.horizon}"
+                )
+            if recovery.domain != execution.domain:
+                errors.append(
+                    f"pair domain mismatch: {execution.task_id}={execution.domain}, "
+                    f"{recovery.task_id}={recovery.domain}"
+                )
+        recovery_base_ids = {task.base_id for task in recovery_tasks}
+        for execution in execution_by_id.values():
+            if execution.task_id not in recovery_base_ids:
+                errors.append(f"execution task {execution.task_id} has no recovery pair")
+
+    if errors:
+        raise ValueError("task set validation failed:\n- " + "\n- ".join(errors))
+
+    return {
+        "total": len(tasks),
+        "by_task_type": dict(sorted(by_type.items())),
+        "by_horizon": {str(key): value for key, value in sorted(by_horizon.items())},
+        "by_task_type_horizon": {
+            f"{task_type}/h{horizon}": count
+            for (task_type, horizon), count in sorted(by_type_horizon.items())
+        },
+        "duplicate_ids": duplicate_ids,
+        "paired": require_pairs,
+    }
 
 
 def canonical_json(value: Any) -> str:

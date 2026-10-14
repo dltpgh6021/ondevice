@@ -60,6 +60,7 @@ ondevice/
 │  └─ experiment.py     # batch 실행과 메타데이터 기록
 └─ scripts/
    ├─ smoke_test.py     # 모델 없이 전체 흐름 검사
+   ├─ validate_tasks.py  # task 중복·누락·대응 관계 검증
    ├─ run_experiment.py # 실제 llama.cpp 실행
    └─ analyze.py        # JSONL 결과 집계
 ```
@@ -96,6 +97,23 @@ python scripts\smoke_test.py
 ```
 
 `SMOKE TEST PASSED`가 출력되면 모델 없이도 task와 Agent 실행 흐름이 정상입니다. 이 단계가 실패하면 모델을 준비하기 전에 `tasks/`, `src/`, Python 버전을 먼저 확인합니다.
+
+## task 세트 검증
+
+본 실험을 시작하기 전에 다음 명령으로 120개 task의 구성을 검사합니다.
+
+```text
+python scripts\validate_tasks.py
+```
+
+검증 항목은 다음과 같습니다.
+
+- 전체 120개 task
+- execution 60개와 recovery 60개
+- 각 task 유형·horizon 조합별 20개
+- 중복 task ID 없음
+- 모든 execution task에 대응하는 recovery task 존재
+- 대응 task의 horizon과 domain 일치
 
 ### 2. llama.cpp 준비
 
@@ -469,6 +487,10 @@ python scripts\analyze.py results\FP16_free_실행시각.jsonl results\FP16_reco
 - normal_restart의 다음 행동 정확도(선택적 진단 조건)
 - recovery의 회복률
 - 회복에 사용된 추가 호출 수
+- recovery 오류 총 횟수(`recovery_error_count`)
+- recovery tool 오류·invalid action 횟수
+- recovery 최초 오류 단계(`recovery_first_error_step`)
+- 성공 상태에 처음 도달한 단계(`recovery_completion_step`)
 - 실행 시간과 생성 토큰 수
 - 선택적으로 최대 RAM 사용량
 

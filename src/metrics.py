@@ -70,6 +70,39 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
     tool_error_count = sum(
         1 for event in trace.get("events", []) if event.get("tool_error") or event.get("error")
     )
+    recovery_tool_error_count = sum(
+        1 for event in trace.get("events", []) if event.get("tool_error")
+    )
+    recovery_invalid_action_count = sum(
+        1
+        for event in trace.get("events", [])
+        if event.get("error") in {"invalid_action", "invalid_arguments"}
+    )
+    recovery_runtime_error_count = int(trace.get("runtime_error") is not None)
+    recovery_error_count = (
+        recovery_tool_error_count
+        + recovery_invalid_action_count
+        + recovery_runtime_error_count
+        if condition == "recovery"
+        else None
+    )
+    recovery_error_steps = [
+        event.get("step")
+        for event in trace.get("events", [])
+        if event.get("tool_error")
+        or event.get("error") in {"invalid_action", "invalid_arguments"}
+        or (
+            trace.get("runtime_error") is not None
+            and event.get("error") == trace.get("runtime_error")
+        )
+    ]
+    recovery_first_error_step = min(recovery_error_steps) if recovery_error_steps else None
+    recovery_completion_steps = [
+        event.get("step")
+        for event in trace.get("events", [])
+        if event.get("success_after_action") is True
+    ]
+    recovery_completion_step = min(recovery_completion_steps) if recovery_completion_steps else None
     success = (
         trace.get("runtime_error") is None
         and _final_state_success(trace.get("final_state", {}), task.success_condition)
@@ -97,6 +130,12 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "wrong_tool_count": wrong_tool_count,
         "wrong_argument_count": wrong_argument_count,
         "tool_error_count": tool_error_count,
+        "recovery_error_count": recovery_error_count,
+        "recovery_tool_error_count": recovery_tool_error_count if condition == "recovery" else None,
+        "recovery_invalid_action_count": recovery_invalid_action_count if condition == "recovery" else None,
+        "recovery_runtime_error_count": recovery_runtime_error_count if condition == "recovery" else None,
+        "recovery_first_error_step": recovery_first_error_step if condition == "recovery" else None,
+        "recovery_completion_step": recovery_completion_step if condition == "recovery" else None,
         "elapsed_ms": trace.get("elapsed_ms", 0.0),
         "prompt_tokens": trace.get("prompt_tokens", 0),
         "completion_tokens": trace.get("completion_tokens", 0),
@@ -139,6 +178,21 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 if condition == "recovery"
                 else None,
                 "mean_extra_calls": mean("extra_calls")
+                if condition == "recovery"
+                else None,
+                "mean_recovery_error_count": mean("recovery_error_count")
+                if condition == "recovery"
+                else None,
+                "mean_recovery_tool_error_count": mean("recovery_tool_error_count")
+                if condition == "recovery"
+                else None,
+                "mean_recovery_invalid_action_count": mean("recovery_invalid_action_count")
+                if condition == "recovery"
+                else None,
+                "mean_recovery_first_error_step": mean("recovery_first_error_step")
+                if condition == "recovery"
+                else None,
+                "mean_recovery_completion_step": mean("recovery_completion_step")
                 if condition == "recovery"
                 else None,
                 "mean_elapsed_ms": mean("elapsed_ms"),
