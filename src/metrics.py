@@ -101,6 +101,7 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "prompt_tokens": trace.get("prompt_tokens", 0),
         "completion_tokens": trace.get("completion_tokens", 0),
         "max_ram_mb": trace.get("max_ram_mb"),
+        "peak_server_ram_mb": trace.get("peak_server_ram_mb"),
     }
     return result
 
@@ -144,6 +145,7 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_prompt_tokens": mean("prompt_tokens"),
                 "mean_completion_tokens": mean("completion_tokens"),
                 "mean_max_ram_mb": mean("max_ram_mb"),
+                "mean_peak_server_ram_mb": mean("peak_server_ram_mb"),
             }
         )
     return summaries

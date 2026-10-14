@@ -240,6 +240,41 @@ python -m pip install -r requirements.txt
 python -m pip install "psutil>=6.0,<8.0"
 ```
 
+`mean_max_ram_mb`는 Python 실행기 자체의 RSS입니다. 실제 모델 서버의 메모리를 측정하려면 llama 서버를 실행한 뒤 PID를 확인하고 `--server-pid`를 함께 전달합니다.
+
+Windows CMD:
+
+```cmd
+tasklist | findstr /I "llama"
+```
+
+예를 들어 PID가 `32356`이면 다음처럼 실행합니다. 서버를 다시 시작하면 PID가 바뀌므로 매번 새 PID를 확인해야 합니다.
+
+```cmd
+python scripts\run_experiment.py --model-label self-Q8 --condition free --model-path "C:\path\to\Qwen3-1.7B-f16-Q8_0.gguf" --base-url http://127.0.0.1:18080 --server-pid 32356 --limit 1
+```
+
+이때 결과에는 다음 두 메모리 값이 별도로 기록됩니다.
+
+- `max_ram_mb`: Python 실행기의 task 종료 시점 RSS
+- `peak_server_ram_mb`: task 실행 중 llama 서버 프로세스에서 관측한 최대 RSS
+
+`mean_peak_server_ram_mb`를 모델별로 비교용 peak RAM 지표로 사용합니다. `--ram-sample-interval-ms`로 측정 간격을 바꿀 수 있으며 기본값은 100ms입니다.
+
+분석 결과를 CSV와 PNG 그래프로 저장하려면 선택적으로 matplotlib를 설치합니다.
+
+```text
+python -m pip install "matplotlib>=3.8,<4.0"
+```
+
+분석 예시는 다음과 같습니다.
+
+```text
+python scripts\analyze.py results\self-Q8_free_실행시각.jsonl --csv-output results\summary.csv --plot-dir results\plots
+```
+
+`--plot-dir`를 지정하면 horizon별 성공률·자연 오류율·회복률·실행 시간·peak server RAM 그래프가 생성됩니다. 모델 저장공간은 `models/manifest.json`에서 읽어 `model_storage_mb`로 요약표에 추가됩니다.
+
 ## 4. 모델 없이 smoke test 실행
 
 실제 모델이나 llama.cpp 서버 없이 Agent 흐름을 확인하는 단계입니다.

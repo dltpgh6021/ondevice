@@ -25,6 +25,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-model", default="local", help="Model name accepted by llama-server")
     parser.add_argument("--base-url", default="http://127.0.0.1:18080")
     parser.add_argument("--model-path", default=None)
+    parser.add_argument(
+        "--server-pid",
+        type=int,
+        default=None,
+        help="Optional llama/llama-server PID for peak RSS measurement",
+    )
+    parser.add_argument(
+        "--ram-sample-interval-ms",
+        type=int,
+        default=100,
+        help="Server RAM sampling interval in milliseconds (default: 100)",
+    )
     parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-calls", type=int, default=None, help="Optional fixed cap; otherwise required calls plus recovery budget")
@@ -35,6 +47,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.ram_sample_interval_ms <= 0:
+        raise SystemExit("--ram-sample-interval-ms must be greater than zero")
     tasks = load_tasks(args.tasks)
     task_type = args.task_type
     if task_type is None:
@@ -51,6 +65,8 @@ def main() -> int:
         base_url=args.base_url,
         seed=args.seed,
         tasks_path=args.tasks,
+        server_pid=args.server_pid,
+        server_ram_sample_interval_ms=args.ram_sample_interval_ms,
     )
     client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed)
     records = run_batch(
@@ -62,6 +78,8 @@ def main() -> int:
         metadata=metadata,
         max_calls=args.max_calls,
         recovery_budget=args.recovery_budget,
+        server_pid=args.server_pid,
+        server_ram_sample_interval_ms=args.ram_sample_interval_ms,
     )
     scores = [record["score"] for record in records]
     print(json.dumps({"output": str(output), "summary": aggregate(scores)}, ensure_ascii=False, indent=2))
