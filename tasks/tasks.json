@@ -908,13 +908,6 @@
         "tool": "prepare_event",
         "arguments": {
           "detail_id": "detail_1bdf5a9c35446a7b",
-          "option_id": "option_371b019b5d26"
-        }
-      },
-      {
-        "tool": "prepare_event",
-        "arguments": {
-          "detail_id": "detail_1bdf5a9c35446a7b",
           "option_id": "option_9f4116eeaaf7"
         }
       },
@@ -923,6 +916,13 @@
         "arguments": {
           "detail_id": "detail_2b54c351335cc364",
           "option_id": "option_155308ea1543"
+        }
+      },
+      {
+        "tool": "prepare_event",
+        "arguments": {
+          "detail_id": "detail_1bdf5a9c35446a7b",
+          "option_id": "option_371b019b5d26"
         }
       }
     ],
@@ -1088,13 +1088,6 @@
       {
         "tool": "prepare_event",
         "arguments": {
-          "detail_id": "detail_b0091f5b9aa952f7",
-          "option_id": "option_5eb5131326d9"
-        }
-      },
-      {
-        "tool": "prepare_event",
-        "arguments": {
           "detail_id": "detail_97d134e224da0043",
           "option_id": "option_3a34e6081cdb"
         }
@@ -1104,6 +1097,13 @@
         "arguments": {
           "detail_id": "detail_b0091f5b9aa952f7",
           "option_id": "option_36e1f8235e01"
+        }
+      },
+      {
+        "tool": "prepare_event",
+        "arguments": {
+          "detail_id": "detail_b0091f5b9aa952f7",
+          "option_id": "option_5eb5131326d9"
         }
       }
     ],
@@ -1269,13 +1269,6 @@
       {
         "tool": "prepare_event",
         "arguments": {
-          "detail_id": "detail_3d2d5c3e1c72fbb9",
-          "option_id": "option_41c7d98b9f8a"
-        }
-      },
-      {
-        "tool": "prepare_event",
-        "arguments": {
           "detail_id": "detail_52539278283d3cfa",
           "option_id": "option_96234f4349f3"
         }
@@ -1285,6 +1278,13 @@
         "arguments": {
           "detail_id": "detail_52539278283d3cfa",
           "option_id": "option_f35293e450a4"
+        }
+      },
+      {
+        "tool": "prepare_event",
+        "arguments": {
+          "detail_id": "detail_3d2d5c3e1c72fbb9",
+          "option_id": "option_41c7d98b9f8a"
         }
       }
     ],
@@ -1451,13 +1451,6 @@
         "tool": "prepare_event",
         "arguments": {
           "detail_id": "detail_692088684ee9af47",
-          "option_id": "option_9e5357b93eb4"
-        }
-      },
-      {
-        "tool": "prepare_event",
-        "arguments": {
-          "detail_id": "detail_692088684ee9af47",
           "option_id": "option_257574fb5bdb"
         }
       },
@@ -1466,6 +1459,13 @@
         "arguments": {
           "detail_id": "detail_e3daa02389e849ca",
           "option_id": "option_77e837e3582c"
+        }
+      },
+      {
+        "tool": "prepare_event",
+        "arguments": {
+          "detail_id": "detail_692088684ee9af47",
+          "option_id": "option_9e5357b93eb4"
         }
       }
     ],
@@ -1631,13 +1631,6 @@
       {
         "tool": "prepare_event",
         "arguments": {
-          "detail_id": "detail_b8528b5d9b755fa0",
-          "option_id": "option_fec742f0d3b6"
-        }
-      },
-      {
-        "tool": "prepare_event",
-        "arguments": {
           "detail_id": "detail_f29ae93b606f37d8",
           "option_id": "option_1a5e7be35be7"
         }
@@ -1647,6 +1640,13 @@
         "arguments": {
           "detail_id": "detail_b8528b5d9b755fa0",
           "option_id": "option_d68f87472959"
+        }
+      },
+      {
+        "tool": "prepare_event",
+        "arguments": {
+          "detail_id": "detail_b8528b5d9b755fa0",
+          "option_id": "option_fec742f0d3b6"
         }
       }
     ],
@@ -1812,6 +1812,13 @@
       {
         "tool": "prepare_itinerary",
         "arguments": {
+          "detail_id": "detail_6345b15d0af0e0cb",
+          "option_id": "option_df1404160e40"
+        }
+      },
+      {
+        "tool": "prepare_itinerary",
+        "arguments": {
           "detail_id": "detail_7795ccd4efa45287",
           "option_id": "option_1c5de0b5c863"
         }
@@ -1821,13 +1828,6 @@
         "arguments": {
           "detail_id": "detail_7795ccd4efa45287",
           "option_id": "option_ce90709b40c7"
-        }
-      },
-      {
-        "tool": "prepare_itinerary",
-        "arguments": {
-          "detail_id": "detail_6345b15d0af0e0cb",
-          "option_id": "option_df1404160e40"
         }
       }
     ],
@@ -1994,6 +1994,13 @@
         "tool": "prepare_itinerary",
         "arguments": {
           "detail_id": "detail_b63a7edd1f254efc",
+          "option_id": "option_1f732e07bea1"
+        }
+      },
+      {
+        "tool": "prepare_itinerary",
+        "arguments": {
+          "detail_id": "detail_b63a7edd1f254efc",
           "option_id": "option_3606a8e4157f"
         }
       },
@@ -2002,13 +2009,6 @@
         "arguments": {
           "detail_id": "detail_a257724b8a69ccee",
           "option_id": "option_5e6d3137510f"
-        }
-      },
-      {
-        "tool": "prepare_itinerary",
-        "arguments": {
-          "detail_id": "detail_b63a7edd1f254efc",
-          "option_id": "option_1f732e07bea1"
         }
       }
     ],
@@ -2174,6 +2174,13 @@
       {
         "tool": "prepare_itinerary",
         "arguments": {
+          "detail_id": "detail_ad843d53faa88901",
+          "option_id": "option_91d184523bfe"
+        }
+      },
+      {
+        "tool": "prepare_itinerary",
+        "arguments": {
           "detail_id": "detail_050b20921933cae7",
           "option_id": "option_7ece546d2733"
         }
@@ -2183,13 +2190,6 @@
         "arguments": {
           "detail_id": "detail_ad843d53faa88901",
           "option_id": "option_3ae813390254"
-        }
-      },
-      {
-        "tool": "prepare_itinerary",
-        "arguments": {
-          "detail_id": "detail_ad843d53faa88901",
-          "option_id": "option_91d184523bfe"
         }
       }
     ],
@@ -2355,6 +2355,13 @@
       {
         "tool": "prepare_itinerary",
         "arguments": {
+          "detail_id": "detail_222468f31272d8af",
+          "option_id": "option_71d9621c95be"
+        }
+      },
+      {
+        "tool": "prepare_itinerary",
+        "arguments": {
           "detail_id": "detail_e7f6c1b0cf85289f",
           "option_id": "option_870d4b798e09"
         }
@@ -2364,13 +2371,6 @@
         "arguments": {
           "detail_id": "detail_e7f6c1b0cf85289f",
           "option_id": "option_b7512498b33e"
-        }
-      },
-      {
-        "tool": "prepare_itinerary",
-        "arguments": {
-          "detail_id": "detail_222468f31272d8af",
-          "option_id": "option_71d9621c95be"
         }
       }
     ],
@@ -2537,6 +2537,13 @@
         "tool": "prepare_itinerary",
         "arguments": {
           "detail_id": "detail_ca100f59a1e14217",
+          "option_id": "option_d36e5bee294e"
+        }
+      },
+      {
+        "tool": "prepare_itinerary",
+        "arguments": {
+          "detail_id": "detail_ca100f59a1e14217",
           "option_id": "option_51f626bf6143"
         }
       },
@@ -2545,13 +2552,6 @@
         "arguments": {
           "detail_id": "detail_9de6282ea7290ecc",
           "option_id": "option_ce51a561e689"
-        }
-      },
-      {
-        "tool": "prepare_itinerary",
-        "arguments": {
-          "detail_id": "detail_ca100f59a1e14217",
-          "option_id": "option_d36e5bee294e"
         }
       }
     ],

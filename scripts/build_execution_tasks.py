@@ -37,7 +37,8 @@ def h1_seed_actions(spec: dict, index: int) -> list[dict]:
     wrong_kind = workflow_chain(spec, best, wrong_option)
     wrong_candidate = workflow_chain(spec, ineligible, ineligible_option)
     prepares = [correct[3], wrong_kind[3], wrong_candidate[3]]
-    rotation = index % len(prepares)
+    # Offset by domain so the correct draft's position is balanced (7/7/6 over 20).
+    rotation = (index + list(WORKFLOWS).index(spec["domain"])) % len(prepares)
     prepares = prepares[rotation:] + prepares[:rotation]
     return correct[:3] + [wrong_candidate[2]] + prepares
 
