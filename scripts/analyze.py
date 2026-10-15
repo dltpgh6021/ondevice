@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.experiment import load_records
 from src.metrics import aggregate
+from src.precision_comparison import compare_precisions, default_reference_label
 from src.recovery_comparison import compare_recovery_records, CONFIG_FIELDS
 from src.tasks import canonical_json
 
@@ -163,6 +164,9 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
     plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon", "recovery_rate", "error_restart", "Recovery rate")
     plot_metric("error_turn_rate_recovery_by_horizon.png", "Recovery errors per response turn", "pooled_error_turn_rate", "error_restart", "Error turns / response turns")
     plot_metric("normal_restart_success_by_horizon.png", "Matched normal restart success", "success_rate", "normal_restart", "Success rate")
+    plot_metric("next_action_accuracy_normal_by_horizon.png", "Next-action accuracy from the correct checkpoint", "next_action_accuracy", "normal_restart", "Next-action accuracy")
+    plot_metric("wrong_save_recovery_free_by_horizon.png", "Self-recovery after a wrong save (free)", "wrong_save_recovery_rate", "free", "Recovery rate")
+    plot_metric("gpu_memory_free_by_horizon.png", "Peak GPU memory by horizon", "mean_peak_gpu_memory_mb", "free", "Mean peak GPU memory used (MB)")
     plot_metric("elapsed_ms_free_by_horizon.png", "Execution time by horizon", "mean_elapsed_ms", "free", "Mean elapsed time (ms)")
     plot_metric("server_ram_free_by_horizon.png", "Peak server RAM by horizon", "mean_peak_server_ram_mb", "free", "Mean peak server RAM (MB)")
     return files
@@ -175,6 +179,8 @@ def main() -> int:
     parser.add_argument("--manifest", default=str(ROOT / "models" / "manifest.json"), help="Model manifest used to add storage size")
     parser.add_argument("--csv-output", default=None, help="Optional flat summary CSV output path")
     parser.add_argument("--plot-dir", default=None, help="Optional directory for PNG figures")
+    parser.add_argument("--reference-label", default=None,
+                        help="Model label compared against (default: the single label containing FP16)")
     args = parser.parse_args()
 
     records: list[dict[str, Any]] = []
@@ -201,8 +207,25 @@ def main() -> int:
     result = {"condition_summaries": condition_summaries,
               "recovery_comparison": paired["summaries"],
               "recovery_pairing": paired["diagnostics"]}
+    labels = {str(row.get("model_label")) for row in condition_summaries}
+    reference_label = args.reference_label or default_reference_label(labels)
+    if reference_label and len(labels) > 1:
+        if reference_label not in labels:
+            raise SystemExit(f"--reference-label {reference_label} is not among the analyzed labels: {sorted(labels)}")
+        try:
+            result["precision_comparison"] = compare_precisions(records, reference_label)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+    elif len(labels) > 1:
+        result["precision_comparison"] = {"skipped": "pass --reference-label; no single FP16 label was found"}
     if args.csv_output:
         _write_csv(condition_summaries, args.csv_output)
+        precision_rows = result.get("precision_comparison", {}).get("success_differences")
+        if precision_rows:
+            csv_path = Path(args.csv_output)
+            precision_path = csv_path.with_name(csv_path.stem + "_precision.csv")
+            _write_csv(precision_rows, precision_path)
+            result["precision_csv"] = str(precision_path)
         if paired["summaries"]:
             csv_path = Path(args.csv_output)
             paired_path = csv_path.with_name(csv_path.stem + "_paired.csv")

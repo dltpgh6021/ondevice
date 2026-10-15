@@ -40,6 +40,8 @@ def parse_args() -> argparse.Namespace:
         default=100,
         help="Server RAM sampling interval in milliseconds (default: 100)",
     )
+    parser.add_argument("--gpu-index", type=int, default=None,
+                        help="Optional NVIDIA GPU index; samples device memory.used via nvidia-smi during each task")
     parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -133,7 +135,9 @@ def main() -> int:
         server_pid=args.server_pid,
         server_ram_sample_interval_ms=args.ram_sample_interval_ms,
     )
-    metadata.update({"condition": args.condition, "task_type": task_type,
+    if args.gpu_index is not None and args.gpu_index < 0:
+        raise SystemExit("--gpu-index must be a nonnegative integer")
+    metadata.update({"condition": args.condition, "task_type": task_type, "gpu_index": args.gpu_index,
                      "max_calls": args.max_calls, "shared_extra_action_turns": args.recovery_budget,
                      "dataset_language": validation["language"],
                      "dataset_version": validation["dataset_version"],
@@ -169,6 +173,7 @@ def main() -> int:
         recovery_budget=args.recovery_budget,
         server_pid=args.server_pid,
         server_ram_sample_interval_ms=args.ram_sample_interval_ms,
+        gpu_index=args.gpu_index,
     )
     scores = [record["score"] for record in records]
     print(json.dumps({"output": str(output), "selected_count": len(tasks),

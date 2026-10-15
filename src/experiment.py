@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import subprocess
 import sys
 import threading
 import time
@@ -84,6 +85,57 @@ class ProcessRamMonitor:
         return round(self._peak_mb, 3) if self._peak_mb is not None else None
 
 
+class GpuMemoryMonitor:
+    """Sample device memory.used through nvidia-smi while one task is running.
+
+    RSS does not see weights offloaded to VRAM. Per-process VRAM is often
+    unavailable under Windows WDDM, so this records the whole device's used
+    memory; keep other GPU workloads closed during measurement.
+    """
+
+    def __init__(self, gpu_index: int | None, interval_seconds: float = 0.25) -> None:
+        self.gpu_index = gpu_index
+        self.interval_seconds = max(0.25, interval_seconds)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._peak_mb: float | None = None
+
+    def sample_once(self) -> float | None:
+        if self.gpu_index is None:
+            return None
+        try:
+            output = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits",
+                 "-i", str(self.gpu_index)],
+                capture_output=True, text=True, timeout=5, check=True,
+            ).stdout.strip().splitlines()
+            used_mb = float(output[0])
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return None
+        self._peak_mb = max(self._peak_mb or 0.0, used_mb)
+        return used_mb
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self.sample_once()
+            self._stop.wait(self.interval_seconds)
+
+    def start(self) -> None:
+        if self.gpu_index is None:
+            return
+        self.sample_once()
+        self._thread = threading.Thread(target=self._run, name="gpu-memory-monitor", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> float | None:
+        if self._thread is None:
+            return None
+        self._stop.set()
+        self._thread.join(timeout=max(6.0, self.interval_seconds * 5))
+        self.sample_once()
+        return round(self._peak_mb, 3) if self._peak_mb is not None else None
+
+
 def collect_metadata(
     *,
     model_label: str,
@@ -125,6 +177,7 @@ def run_batch(
     recovery_budget: int = 3,
     server_pid: int | None = None,
     server_ram_sample_interval_ms: int = 100,
+    gpu_index: int | None = None,
 ) -> list[dict[str, Any]]:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +197,9 @@ def run_batch(
                 server_pid,
                 interval_seconds=server_ram_sample_interval_ms / 1000,
             )
+            gpu_monitor = GpuMemoryMonitor(gpu_index)
             server_ram_monitor.start()
+            gpu_monitor.start()
             try:
                 trace = run_agent(
                     task,
@@ -155,10 +210,12 @@ def run_batch(
                 )
             finally:
                 trace_server_peak_ram_mb = server_ram_monitor.stop()
+                trace_peak_gpu_memory_mb = gpu_monitor.stop()
             trace["max_calls"] = allowed_calls
             trace["budget_basis"] = "normal_remaining_calls + shared extra action turns"
             trace["max_ram_mb"] = current_ram_mb()
             trace["peak_server_ram_mb"] = trace_server_peak_ram_mb
+            trace["peak_gpu_memory_mb"] = trace_peak_gpu_memory_mb
             score = score_trace(task, trace)
             score["model_label"] = model_label
             record = {
