@@ -15,6 +15,7 @@ from src.experiment import collect_metadata, run_batch
 from src.metrics import aggregate
 from src.dataset_validation import DatasetValidationError, load_validated_tasks
 from src.run_preparation import PreparationError, prepare_run
+from src.tasks import Task
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +52,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-calls", type=int, default=None, help="Fixed model response-turn cap, including finish/invalid responses; otherwise normal horizon plus shared extra turns")
     parser.add_argument("--recovery-budget", type=int, default=3, help="Shared extra response turns above normal horizon, identical in both recovery branches (default: 3)")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--horizon", type=int, choices=[1, 3, 5], default=None,
+                        help="Select the required remaining horizon before applying --limit")
+    parser.add_argument("--task-id", default=None,
+                        help="Select one exact task ID; must agree with the selected task type and horizon")
     return parser.parse_args()
+
+
+def select_tasks(tasks: list[Task], *, task_type: str, horizon: int | None = None,
+                 task_id: str | None = None, limit: int | None = None) -> list[Task]:
+    """Filter an already validated full dataset, preserving its original order."""
+    if task_type not in {"all", "execution", "recovery"}:
+        raise SystemExit("Invalid --task-type")
+    if horizon is not None and (type(horizon) is not int or horizon not in {1, 3, 5}):
+        raise SystemExit("--horizon must be 1, 3 or 5")
+    if limit is not None and (type(limit) is not int or limit < 1):
+        raise SystemExit("--limit must be a positive integer")
+    selected = list(tasks)
+    if task_id is not None:
+        selected = [task for task in selected if task.task_id == task_id]
+        if not selected:
+            raise SystemExit(f"Unknown --task-id: {task_id}")
+    if task_type != "all":
+        selected = [task for task in selected if task.task_type == task_type]
+    if horizon is not None:
+        selected = [task for task in selected if task.horizon == horizon]
+    if not selected:
+        raise SystemExit("No tasks match --task-type, --horizon and --task-id. "
+                         "Execution and recovery IDs are different; no automatic ID conversion is performed.")
+    return selected[:limit] if limit is not None else selected
 
 
 def main() -> int:
@@ -78,12 +107,7 @@ def main() -> int:
     task_type = args.task_type
     if task_type is None:
         task_type = "execution" if args.condition == "free" else "recovery"
-    if task_type != "all":
-        tasks = [task for task in tasks if task.task_type == task_type]
-    if args.limit is not None:
-        tasks = tasks[: args.limit]
-    if not tasks:
-        raise SystemExit("No tasks selected.")
+    tasks = select_tasks(tasks, task_type=task_type, horizon=args.horizon, task_id=args.task_id, limit=args.limit)
     if args.recovery_budget < 0 or (args.max_calls is not None and args.max_calls < 1):
         raise SystemExit("Call budgets must be positive (extra budget may be zero).")
     if any((args.condition == "free" and task.task_type != "execution") or
@@ -115,6 +139,10 @@ def main() -> int:
                      "dataset_version": validation["dataset_version"],
                      "dataset_sha256": validation["dataset_sha256"],
                      "tasks_sha256": validation["tasks_file_sha256"],
+                     "task_selection": {"task_type": task_type, "horizon": args.horizon,
+                                        "task_id": args.task_id, "limit": args.limit,
+                                        "selected_count": len(tasks),
+                                        "selected_task_ids": [task.task_id for task in tasks]},
                      "dataset_validation": {"valid": True, "validator_version": validation["validator_version"]}})
     client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed, temperature=args.temperature,
                             max_tokens=args.max_tokens, timeout_seconds=args.timeout_seconds)
@@ -143,7 +171,9 @@ def main() -> int:
         server_ram_sample_interval_ms=args.ram_sample_interval_ms,
     )
     scores = [record["score"] for record in records]
-    print(json.dumps({"output": str(output), "summary": aggregate(scores)}, ensure_ascii=False, indent=2))
+    print(json.dumps({"output": str(output), "selected_count": len(tasks),
+                      "selected_task_ids": [task.task_id for task in tasks],
+                      "summary": aggregate(scores)}, ensure_ascii=False, indent=2))
     return 0
 
 

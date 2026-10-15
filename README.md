@@ -638,6 +638,24 @@ python scripts/run_experiment.py --model-label self-Q4 --condition error_restart
 
 세 정밀도에서 task·프롬프트·도구·추론 설정·장비·호출 예산을 같게 유지합니다. 공통 설정과 워밍업은 위 잠금 파일로 관리하며, 서버에서 확인된 버전은 `llama_cpp_version`에 기록합니다. 준비 프로토콜·서버 설정 hash·워밍업 정책·잠금 hash가 다른 결과는 같은 회복 비교로 합치지 않습니다. 전체 서버 설정의 자동 검증, GPU VRAM, resume/반복 번호는 여전히 별도 보완 대상입니다. 과거 워밍업 없는 결과와 현재 결과는 합치지 않습니다.
 
+### h3·h5 또는 특정 과제만 예비 실행
+
+`--horizon 3 --limit 1`은 h3 과제를 먼저 고른 뒤 그중 첫 1개를 실행합니다. `--horizon 5 --limit 1`도 같습니다. `--limit 3`만 쓰면 현재 데이터 순서상 h1 과제 3개가 선택되므로, 서로 다른 horizon을 확인하는 방법이 아닙니다.
+
+원하는 시나리오를 확실히 맞추려면 `--task-id`를 사용합니다. execution의 `shopping_001_h3`과 회복 두 조건의 `recovery_shopping_001_h3`을 선택하면 같은 기본 시나리오를 확인할 수 있습니다. `--task-id`와 `--horizon`을 함께 주면 두 조건이 일치해야 합니다. ID가 없거나 유형/길이가 맞지 않으면 서버 요청 전에 중단합니다. 선택한 ID는 콘솔 출력과 결과 metadata의 `task_selection`에 기록합니다.
+
+아래는 같은 Q8 서버에서 CPU 예비 검증을 진행하는 예시입니다. 현재 서버 PID를 `--server-pid`로 각각 추가하며, 서버를 재시작했다면 새 PID를 사용합니다. 설정 잠금·프롬프트·추론 설정·예산은 기존 h1 예비 실행과 그대로 유지합니다. 모든 명령은 한 줄이며 Windows CMD·WSL·macOS에서 같은 슬래시 경로를 사용할 수 있습니다.
+
+```text
+python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition free --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_free_h3_01.jsonl --task-id shopping_001_h3
+python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition normal_restart --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_normal_h3_01.jsonl --task-id recovery_shopping_001_h3
+python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition error_restart --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_error_h3_01.jsonl --task-id recovery_shopping_001_h3
+```
+
+h5는 세 명령의 task ID와 출력 파일명에서 `h3`을 `h5`로 바꿉니다. 이것으로 h1·h3·h5 각각에서 정상 수행·회복 정상·회복 오류의 9개 실행을 확인할 수 있습니다. 이미 있는 결과는 덮어쓰지 않으며, 재실행할 때는 새 파일명을 사용합니다. 성공하지 못한 실행도 로그를 보관하고, 중간에 조건을 바꾸거나 실패한 결과를 성공한 재실행으로 대체하지 않습니다.
+
+필터를 사용해도 원본 120개 task에 대한 전체 검증은 먼저 수행합니다. 선택 옵션은 입력·정답·채점·추론 설정을 바꾸지 않으므로 기존 h1 예비 결과와 함께 분석할 수 있습니다. 같은 task/조건의 반복 실행은 중복으로 합치지 말고 별도 실험으로 분리합니다. 이 소수의 예비 결과로 정밀도 차이나 horizon 효과를 결론 내리지는 않습니다.
+
 ## 7. 회복 실험과 집계
 
 ### 공통 오류와 두 분기
