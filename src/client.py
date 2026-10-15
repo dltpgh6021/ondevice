@@ -3,9 +3,49 @@
 from __future__ import annotations
 
 import json
+import http.client
 import urllib.error
 import urllib.request
 from typing import Any
+
+
+class InfrastructureError(RuntimeError):
+    """An unusable server/transport response, not a model behavior failure."""
+
+    def __init__(self, message: str, *, kind: str = "transport_error") -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
+def _response_usage(payload: dict[str, Any]) -> dict[str, Any]:
+    usage = payload.get("usage")
+    if usage is None:
+        return {}
+    if not isinstance(usage, dict) or any(
+        key in usage and (type(usage[key]) is not int or usage[key] < 0)
+        for key in ("prompt_tokens", "completion_tokens")
+    ):
+        raise InfrastructureError("invalid token usage in server response", kind="response_protocol")
+    return usage
+
+
+class ModelOutputError(ValueError):
+    """An observable model response that violates the single-action protocol."""
+
+    def __init__(self, message: str, *, kind: str = "invalid_arguments",
+                 payload: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.payload = payload or {}
+        self.usage = _response_usage(self.payload)
+        choices = self.payload.get("choices") or []
+        choice = choices[0] if choices else {}
+        self.finish_reason = choice.get("finish_reason")
+        message_value = choice.get("message") or {}
+        calls = message_value.get("tool_calls") or []
+        self.attempted_tool_call_count = len(calls) if isinstance(calls, list) else 0
+        if not self.attempted_tool_call_count and message_value.get("function_call"):
+            self.attempted_tool_call_count = 1
 
 
 def _normalize_arguments(value: Any) -> dict[str, Any]:
@@ -17,37 +57,61 @@ def _normalize_arguments(value: Any) -> dict[str, Any]:
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"tool arguments are not valid JSON: {value}") from exc
+            raise ModelOutputError("tool arguments are not valid JSON") from exc
         if not isinstance(parsed, dict):
-            raise ValueError("tool arguments must decode to an object")
+            raise ModelOutputError("tool arguments must decode to an object")
         return parsed
-    raise ValueError("unsupported tool arguments")
+    raise ModelOutputError("unsupported tool arguments")
 
 
 def parse_chat_response(payload: dict[str, Any]) -> dict[str, Any]:
-    choices = payload.get("choices") or []
-    if not choices:
-        raise ValueError("chat response did not contain choices")
-    message = choices[0].get("message") or {}
+    if not isinstance(payload, dict):
+        raise InfrastructureError("chat response is not an object", kind="response_protocol")
+    choices = payload.get("choices")
+    if (not isinstance(choices, list) or not choices or not isinstance(choices[0], dict)
+            or not isinstance(choices[0].get("message"), dict)):
+        raise InfrastructureError("chat response did not contain a valid choice/message", kind="response_protocol")
+    message = choices[0]["message"]
+    _response_usage(payload)
+    if choices[0].get("finish_reason") == "length":
+        raise ModelOutputError("model output reached the token limit", kind="output_truncated", payload=payload)
     tool_calls = message.get("tool_calls") or []
     if tool_calls:
+        if (not isinstance(tool_calls, list) or any(not isinstance(call, dict) for call in tool_calls)):
+            raise ModelOutputError("tool_calls must be a list of call objects", kind="invalid_action", payload=payload)
+        if len(tool_calls) != 1:
+            raise ModelOutputError("exactly one tool call per response is allowed", kind="multiple_tool_calls", payload=payload)
         call = tool_calls[0]
         function = call.get("function") or {}
+        if not isinstance(function, dict) or not isinstance(function.get("name"), str) or not function["name"]:
+            raise ModelOutputError("tool call needs a function name", kind="invalid_action", payload=payload)
+        try:
+            arguments = _normalize_arguments(function.get("arguments"))
+        except ModelOutputError as exc:
+            raise ModelOutputError(str(exc), kind=exc.kind, payload=payload) from exc
         return {
             "type": "tool_call",
             "name": function.get("name"),
-            "arguments": _normalize_arguments(function.get("arguments")),
+            "arguments": arguments,
         }
 
     legacy_call = message.get("function_call")
     if legacy_call:
+        if not isinstance(legacy_call, dict) or not isinstance(legacy_call.get("name"), str) or not legacy_call["name"]:
+            raise ModelOutputError("function_call needs a function name", kind="invalid_action", payload=payload)
+        try:
+            arguments = _normalize_arguments(legacy_call.get("arguments"))
+        except ModelOutputError as exc:
+            raise ModelOutputError(str(exc), kind=exc.kind, payload=payload) from exc
         return {
             "type": "tool_call",
             "name": legacy_call.get("name"),
-            "arguments": _normalize_arguments(legacy_call.get("arguments")),
+            "arguments": arguments,
         }
 
-    content = message.get("content") or ""
+    content = message.get("content")
+    if content is None:
+        content = ""
     if isinstance(content, list):
         content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
     if isinstance(content, str):
@@ -55,14 +119,27 @@ def parse_chat_response(payload: dict[str, Any]) -> dict[str, Any]:
         if stripped.startswith("{"):
             try:
                 candidate = json.loads(stripped)
-            except json.JSONDecodeError:
-                candidate = None
+            except json.JSONDecodeError as exc:
+                raise ModelOutputError("JSON action is not valid JSON", kind="invalid_action", payload=payload) from exc
             if isinstance(candidate, dict) and candidate.get("type") == "tool_call":
+                if not isinstance(candidate.get("name"), str) or not candidate["name"]:
+                    raise ModelOutputError("JSON action needs a function name", kind="invalid_action", payload=payload)
+                try:
+                    arguments = _normalize_arguments(candidate.get("arguments"))
+                except ModelOutputError as exc:
+                    failure = ModelOutputError(str(exc), kind=exc.kind, payload=payload)
+                    failure.attempted_tool_call_count = 1
+                    raise failure from exc
                 return {
                     "type": "tool_call",
                     "name": candidate.get("name"),
-                    "arguments": _normalize_arguments(candidate.get("arguments")),
+                    "arguments": arguments,
                 }
+            if isinstance(candidate, dict) and candidate.get("type") == "finish":
+                return {"type": "finish", "answer": str(candidate.get("answer", ""))}
+            raise ModelOutputError("JSON response is not a supported action", kind="invalid_action", payload=payload)
+    else:
+        raise ModelOutputError("response content must be text", kind="invalid_action", payload=payload)
     return {"type": "finish", "answer": str(content)}
 
 
@@ -124,11 +201,19 @@ class LlamaCppClient:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"llama-server HTTP {exc.code}: {body}") from exc
+            raise InfrastructureError(f"llama-server HTTP {exc.code}: {body}", kind="http_error") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"could not reach llama-server at {self.endpoint}: {exc}") from exc
+            raise InfrastructureError(f"could not reach llama-server at {self.endpoint}: {exc}", kind="connection_error") from exc
+        except (TimeoutError, OSError, http.client.HTTPException) as exc:
+            raise InfrastructureError(f"llama-server transport failed: {exc}", kind="transport_error") from exc
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise InfrastructureError("llama-server returned invalid response JSON", kind="response_protocol") from exc
+        action = parse_chat_response(payload)
         return {
-            "action": parse_chat_response(payload),
+            "action": action,
             "usage": payload.get("usage") or {},
+            "raw_response": payload,
+            "finish_reason": payload["choices"][0].get("finish_reason"),
+            "attempted_tool_call_count": int(action["type"] == "tool_call"),
         }
 

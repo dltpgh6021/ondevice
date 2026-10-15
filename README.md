@@ -2,7 +2,7 @@
 
 양자화가 장기 Agent의 수행 안정성에 미치는 영향을 비교하는 실험 저장소입니다.
 
-**현재 단계:** execution 60개와 recovery 60개를 v2로 재설계했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. 워밍업·서버 설정 고정·VRAM·반복 실행 관리는 여전히 본실험 전에 보완해야 합니다.
+**현재 단계:** execution 60개와 recovery 60개를 v2로 재설계하고 영어 데이터 자동 검증과 회복·오류 지표 v3를 구현했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. 워밍업·서버 설정 고정·VRAM·반복 실행 관리는 여전히 본실험 전에 보완해야 합니다.
 
 현재 모델 입력은 **영어**, 데이터 버전은 `workflow-en-v1`입니다. 질문·요청 조건 설명·후보 이름·일정 제목·도구 정의·오류 관측을 영어로 통일했습니다. 실제 실험 명령은 전체 데이터셋 자동 검증을 먼저 통과해야 시작합니다. 팀원용 README는 한국어이며, 생성되는 task 카탈로그는 영어입니다.
 
@@ -67,7 +67,7 @@ execution은 같은 기본 시나리오의 질문·후보·선택 규칙·최종
 
 각 시나리오는 적격 후보 2개와 조건을 위반하는 후보 1개, 후보별 옵션 2개를 가집니다. 일부 시나리오는 1순위 점수가 같아 명시된 2순위 기준을 적용해야 합니다. 금액은 가상 단위이고 `start_hour`·`depart_hour`는 해당 날짜의 24시간제 정수 시각입니다.
 
-v2의 `natural_error`·`first_error_step`는 정답 경로의 순서를 비교하지 않습니다. 도구/인자 오류, 요청을 위반한 결과 확정, 올바른 결과 삭제, 미완료 상태의 종료를 셉니다. 유효한 추가 조회·다른 후보 탐색·삭제 순서 차이는 오류가 아닙니다. 준비만 한 잘못된 draft 등 모든 계획 오류를 포착하는 지표는 아닙니다. JSON 파싱 예외와 통신 예외의 세부 구분은 아직 보완 대상이며, 현재 `runtime_error`가 있는 실행은 행동 지표에서 제외하고 별도 개수로 보고합니다.
+v2 task의 `natural_error`·`first_error_step`는 정답 경로의 순서를 비교하지 않습니다. 도구/인자 오류, 요청을 위반한 결과 확정, 올바른 결과 삭제, 미완료 상태의 종료와 잘못된 모델 출력을 셉니다. 유효한 추가 조회·다른 후보 탐색·삭제 순서 차이는 오류가 아닙니다. 준비만 한 잘못된 draft 등 모든 계획 오류를 포착하는 지표는 아닙니다. 지표 v3에서는 잘못된 모델 JSON·다중 도구 출력·토큰 상한 잘림은 행동 평가에 포함하고, HTTP·연결·서버 응답 형식 장애 및 예상하지 못한 코드 예외는 별도 표시하여 분모에서 제외합니다.
 
 이 설계는 **동일 작업 흐름에서 남은 의존 단계 수**의 효과를 비교합니다. 시작 정보량과 이미 완료된 작업도 달라지므로 일반 과제의 길이만 바꾼 결과라고 해석하지 않습니다. h1은 올바르게 준비된 결과를 확정하므로 후보 선택 능력은 h3·h5에서 주로 비교합니다. 현재 4개 분야는 같은 5단계 구조를 사용하며, 다양한 현실 Agent 작업 전체를 대표하지는 않습니다.
 
@@ -79,6 +79,7 @@ ondevice/
 ├─ requirements.txt
 ├─ .github/workflows/validate-dataset.yml # GitHub 업로드·PR 시 오프라인 검사
 ├─ tests/test_dataset_validation.py # 잘못된 데이터가 거부되는지 회귀 검사
+├─ tests/test_behavior_metrics.py # 출력 오류·서버 장애·회복 지표 회귀 검사
 ├─ tasks/tasks.json
 ├─ src/
 │  ├─ tasks.py          # task 로딩과 검증
@@ -89,7 +90,7 @@ ondevice/
 │  ├─ execution_validation.py  # 정답·우회 경로·최종 상태 검증
 │  ├─ recovery_validation.py   # 대응 checkpoint·복구 필요성 검증
 │  ├─ recovery_comparison.py   # 동일 조건의 정상/오류 쌍 비교
-│  ├─ workflow_metrics.py      # 상태·행동 기반 v2 지표
+│  ├─ workflow_metrics.py      # v2 task의 상태·행동 기반 v3 지표
 │  ├─ agent.py          # 공통 Agent 실행 루프
 │  ├─ metrics.py        # 성공·오류·회복 지표
 │  └─ experiment.py     # batch 실행과 메타데이터 기록
@@ -500,7 +501,7 @@ python -m pip install "matplotlib>=3.8,<4.0"
 python scripts\analyze.py results\self-Q8_free_실행시각.jsonl --csv-output results\summary.csv --plot-dir results\plots
 ```
 
-`--plot-dir`를 지정하면 horizon별 성공률·자연 오류율·회복률·실행 시간·peak server RAM 그래프가 생성됩니다. 모델 저장공간은 `models/manifest.json`에서 읽어 `model_storage_mb`로 요약표에 추가됩니다.
+`--plot-dir`를 지정하면 horizon별 성공률·자연 오류율·응답별/실제 도구 호출별 오류율·회복률·실행 시간·peak server RAM 그래프가 생성됩니다. 값이 수집되지 않은 지표의 그림은 만들지 않습니다. 모델 저장공간은 `models/manifest.json`에서 읽어 `model_storage_mb`로 요약표에 추가됩니다.
 
 ## 4. 모델 없이 smoke test 실행
 
@@ -646,7 +647,7 @@ python scripts/analyze.py results/self-Q4_normal_restart_실행시각.jsonl resu
 - `mean_extra_calls_over_normal`: 정상 최소 호출보다 얼마나 더 사용했는지
 - `mean_extra_calls_over_oracle`: 해당 오류의 최소 복구 호출보다 얼마나 더 사용했는지
 
-추가 호출 평균은 완료한 오류 실행에 대해서만 계산합니다. 실패 실행이 빨리 끝났다고 효율적인 회복으로 해석하지 않습니다. 서로 다른 장비·모델 hash·task hash·seed·수집된 client 설정·예산은 같은 비교 쌍으로 합치지 않습니다. 동일한 실행을 중복 입력하면 오류로 알리며, 짝이 없는 결과와 runtime 오류가 있는 쌍은 진단 정보로 남깁니다. 기록되지 않은 서버 설정 차이까지 자동 검출하는 것은 아닙니다.
+추가 호출 평균은 완료한 오류 실행에 대해서만 계산합니다. 실패 실행이 빨리 끝났다고 효율적인 회복으로 해석하지 않습니다. 서로 다른 장비·모델 hash·task hash·seed·수집된 client 설정·예산·평가 버전·Agent 정책 버전은 같은 비교 쌍으로 합치지 않습니다. 동일한 실행을 중복 입력하면 오류로 알리며, 짝이 없는 결과와 서버/코드 예외가 있는 쌍은 진단 정보로 남깁니다. 잘못된 모델 출력은 대응 비교에서도 제외하지 않습니다. 기록되지 않은 서버 설정 차이까지 자동 검출하는 것은 아닙니다.
 
 `--csv-output results/recovery_summary.csv`를 지정하면 조건별 표와 함께 `results/recovery_summary_paired.csv`에 대응 비교 표를 저장합니다. 회복률 그림은 `error_restart` 결과를 사용합니다. 일반 표·그림은 같은 모델 라벨·프로토콜에 다른 수집 설정이 들어오면 분석을 중단합니다. 장비나 seed가 다른 결과는 별도로 분석하거나 라벨을 구분합니다. 누락된 metadata나 미수집 서버 설정까지 자동 검출할 수는 없습니다.
 
@@ -657,14 +658,31 @@ execution의 `free` 결과는 전체 수행 분석용입니다. 이 성공률에
 - `recovery_success`: 잘못된 기록 제거와 원래 목표 달성을 모두 완료했는지
 - `recovery_error_resolved`: 추가된 잘못된 기록을 제거했는지. 이것만 true이고 최종 과제는 실패할 수 있음
 - `recovery_resolution_step`: 잘못된 기록이 처음 제거된 재개 이후 응답 단계
+- `recovery_stable_resolution_turn`: 마지막 재발 이후 제거가 유지되기 시작한 응답 턴. 최종 상태에 잘못된 기록이 있으면 null
 - `recovery_completion_step`: 목표 상태에 처음 도달한 응답 단계. 이후 다시 망가뜨리면 최종 성공은 false
-- `recovery_error_count`: 재개 후 도구/인자 오류·잘못된 확정/삭제·미완료 종료를 낸 응답 단계 수
+- `recovery_error_count`: 재개 후 도구/인자 오류·잘못된 확정/삭제·미완료 종료·출력 형식 오류를 낸 응답 단계 수. 한 응답에서 여러 오류 표지가 있어도 1회로 계산
 - `recovery_first_error_step`: 주입된 오류가 아니라 모델이 재개 후 새로 낸 첫 오류 단계
-- `tool_call_count`: 재개 후 모델이 요청한 도구 호출 수
+- `attempted_tool_call_count`: 모델이 출력한 도구 호출 시도 수. 한 응답에 여러 호출을 내면 모두 시도로 기록하되 실행하지 않음
+- `tool_call_count`, `executed_tool_call_count`: 실제 도구 실행기에 전달한 호출 수. 도구가 인자를 거절한 호출도 포함하며, 파싱 실패로 실행하지 못한 출력은 제외
+- `response_turn_count`: 모델 응답을 받은 횟수. 종료·출력 형식 오류도 포함하며, 응답 없이 끝난 서버/코드 예외 단계는 제외
+- `error_count`, `error_turn_rate`: 오류를 낸 응답 수와 전체 응답 수 대비 비율
+- `tool_error_action_count`, `tool_action_error_rate`: 실제 도구 호출 중 도구 거절 또는 잘못된 상태 변경이 발생한 호출 수와 비율
+- `natural_error_rate`: `free`에서 오류를 한 번 이상 낸 **과제의 비율**. 호출별 오류율이 아니며, 위 응답별/호출별 비율과 구분
+- `first_error_turn` (`first_error_step`과 동일): 재개 후 1부터 센 응답 턴. `first_error_tool_call_index`는 그 오류 응답이 실제 도구를 실행한 경우의 1-based 호출 번호이며 파싱·종료 오류이면 null
 - `extra_calls_over_normal`, `extra_calls_over_oracle`: 정상 기준/분기별 최소 호출 기준의 추가 비용
-- `n_runtime_errors`: 예외로 종료되어 행동 성공률에서 제외된 실행 수
+- `model_output_error_count`: 잘못된 JSON·동시 다중 호출·토큰 상한 잘림 등으로 사용할 수 없었던 응답 수
+- `termination_reason`: `finished` / `budget_exhausted` / `infrastructure_error` / `internal_error`. 정상 조회만 반복하다 예산이 끝나면 오류 횟수 0인 실패도 가능
+- `n_runtime_errors`: 서버 장애 또는 코드 예외로 행동 성공률에서 제외된 실행 수. `n_infrastructure_errors`와 `n_internal_errors`로 세부 구분
 
-v2의 선택적 조회와 유효한 다른 행동 순서는 오류가 아닙니다. `next_action_accuracy`는 v2에서 사용하지 않아 null입니다. runtime 예외에는 모델 출력 파싱 문제와 통신 문제가 아직 함께 들어갈 수 있으므로 제외된 로그를 따로 검토해야 합니다.
+`recovery_error_resolved`는 **최종 상태**에서 잘못된 기록이 없는지 확인합니다. `recovery_resolution_step`은 첫 제거 시점이므로, 이후 잘못된 기록을 다시 저장하면 첫 제거 시점이 있어도 최종 회복은 실패합니다. 주입된 호출과 제공된 과거 기록은 새 오류·호출 비용에 포함하지 않습니다. 선택적 조회와 유효한 다른 행동 순서는 오류가 아니며 `next_action_accuracy`는 사용하지 않아 null입니다. 비율의 분모가 0이면 null로 남깁니다. 집계의 `pooled_error_turn_rate`와 `pooled_tool_action_error_rate`는 유효한 과제들의 분자·분모를 각각 합친 비율입니다.
+
+### 출력 오류와 서버 장애 처리 정책
+
+모든 정밀도는 한 응답에 도구 호출 하나만 내도록 같은 시스템 지시를 받습니다. 여러 호출을 내면 첫 번째만 조용히 실행하지 않고 전체 응답을 거절합니다. 잘못된 모델 출력은 원문·토큰 사용량·`finish_reason`·오류 종류를 로그에 남기고, 정답을 알려주지 않는 고정된 형식 안내만 제공합니다. 이 응답도 동일한 응답 턴 예산을 소비합니다. 잘린 응답(`finish_reason=length`)은 도구 실행 전에 거절합니다. 파싱 오류 뒤 올바르게 복구하면 최종 성공은 가능하지만 발생한 출력 오류는 지워지지 않습니다.
+
+HTTP 오류·타임아웃·연결 실패·잘못된 서버 응답 형식은 `infrastructure_error`, 예상하지 못한 코드 예외는 `internal_error`로 종료합니다. 이 실행은 모델 성공률 분모에서 제외하며, 대응 비교에서도 어느 한쪽에 장애가 있으면 그 쌍을 제외하고 개수를 보고합니다. 제외가 많거나 정밀도별로 치우치면 서버·설정 문제를 먼저 점검하고 해당 과제를 다시 수집해야 합니다. 자동 재시도는 아직 없으므로 중복 결과를 그대로 합치지 않습니다.
+
+현재 `metrics_version=workflow-metrics-v3`, `agent_policy_version=single-action-feedback-v1`을 metadata·trace·score에 기록합니다. 기존 로그의 모델 파싱 오류는 분리되지 않았으므로 새 지표로 소급 해석하지 않고 별도로 보관합니다. 새 데이터셋과 같은 모델 파일을 쓰더라도 평가·Agent 정책이 바뀌었으므로 본실험 결과는 새로 수집합니다.
 
 ## 8. 연구용 task 구성과 검증
 

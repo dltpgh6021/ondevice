@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .agent import run_agent
+from .agent import run_agent, METRICS_VERSION, AGENT_POLICY_VERSION
 from .environment import environment_for_task
 from .metrics import score_trace
 from .tasks import Task, stable_hash
@@ -129,6 +129,8 @@ def run_batch(
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, Any]] = []
+    metadata = {**metadata, "metrics_version": METRICS_VERSION,
+                "agent_policy_version": AGENT_POLICY_VERSION}
     with output.open("w", encoding="utf-8") as handle:
         for task in tasks:
             environment = environment_for_task(task)

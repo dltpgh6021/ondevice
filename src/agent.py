@@ -7,8 +7,22 @@ import json
 import time
 from typing import Any
 
+from .client import InfrastructureError, ModelOutputError
 from .environment import MockEnvironment
 from .tasks import Task
+
+AGENT_POLICY_VERSION = "single-action-feedback-v1"
+METRICS_VERSION = "workflow-metrics-v3"
+
+
+def _output_feedback(messages: list[dict[str, Any]], output: Any, kind: str) -> None:
+    """Fixed format feedback, never a task answer or a corrected tool argument."""
+    messages.append({"role": "assistant", "content": json.dumps(output, ensure_ascii=False)})
+    messages.append({"role": "user", "content": (
+        f"Your last response could not be used ({kind}). Return exactly one tool call "
+        "with a JSON object for its arguments, or a final answer if the task is complete. "
+        "No action from that response was executed."
+    )})
 
 
 def _assistant_tool_message(action: dict[str, Any], call_id: str) -> dict[str, Any]:
@@ -37,8 +51,9 @@ def run_agent(
 ) -> dict[str, Any]:
     """Run one task and return a fully inspectable trace.
 
-    The loop has no hidden retry or correction policy. The model receives the
-    tool result and must decide how to recover itself.
+    Invalid model output consumes one response turn and receives fixed format
+    feedback. No task-specific correction is supplied. Infrastructure failures
+    stop the run and are excluded from behavioral rates, not silently retried.
     """
 
     messages, _ = environment.prepare_condition(task, condition)
@@ -63,6 +78,11 @@ def run_agent(
         "reference_tools": [action["tool"] for action in reference_actions],
         "events": [],
         "runtime_error": None,
+        "infrastructure_error": None,
+        "internal_error": None,
+        "termination_reason": "budget_exhausted",
+        "metrics_version": METRICS_VERSION,
+        "agent_policy_version": AGENT_POLICY_VERSION,
         "finished": False,
         "final_answer": "",
         "schema_version": task.schema_version,
@@ -77,6 +97,7 @@ def run_agent(
     start_time = time.perf_counter()
     total_prompt_tokens = 0
     total_completion_tokens = 0
+    executed_calls = 0
     for step in range(max_calls):
         event: dict[str, Any] = {"step": step + 1}
         call_start = time.perf_counter()
@@ -86,42 +107,86 @@ def run_agent(
             usage = response.get("usage") or {}
             total_prompt_tokens += int(usage.get("prompt_tokens", 0) or 0)
             total_completion_tokens += int(usage.get("completion_tokens", 0) or 0)
+        except ModelOutputError as exc:
+            total_prompt_tokens += int(exc.usage.get("prompt_tokens", 0) or 0)
+            total_completion_tokens += int(exc.usage.get("completion_tokens", 0) or 0)
+            event.update({"error": "model_output_error", "model_error": exc.kind,
+                          "error_detail": str(exc), "raw_response": exc.payload,
+                          "usage": exc.usage, "finish_reason": exc.finish_reason,
+                          "attempted_tool_call_count": exc.attempted_tool_call_count,
+                          "response_received": True,
+                          "tool_executed": False,
+                          "latency_ms": round((time.perf_counter() - call_start) * 1000, 3)})
+            trace["events"].append(event)
+            choices = exc.payload.get("choices") or []
+            output = choices[0].get("message") if choices else {"error": exc.kind}
+            _output_feedback(messages, output, exc.kind)
+            continue
         except Exception as exc:  # keep a failed run available for analysis
             trace["runtime_error"] = f"{type(exc).__name__}: {exc}"
+            category = "infrastructure_error" if isinstance(exc, InfrastructureError) else "internal_error"
+            trace[category] = trace["runtime_error"]
+            trace["termination_reason"] = category
             event["error"] = trace["runtime_error"]
+            event["error_category"] = category
+            event["failure_kind"] = getattr(exc, "kind", type(exc).__name__)
+            event["tool_executed"] = False
+            event["response_received"] = False
             event["latency_ms"] = round((time.perf_counter() - call_start) * 1000, 3)
             trace["events"].append(event)
             break
 
         event["action"] = action
+        event["response_received"] = True
+        event["usage"] = usage
+        if "raw_response" in response:
+            event["raw_response"] = response["raw_response"]
+        event["finish_reason"] = response.get("finish_reason")
+        event["tool_executed"] = False
+        event["attempted_tool_call_count"] = response.get("attempted_tool_call_count", int(
+            isinstance(action, dict) and action.get("type") == "tool_call"))
         event["latency_ms"] = round((time.perf_counter() - call_start) * 1000, 3)
-        action_type = action.get("type")
+        action_type = action.get("type") if isinstance(action, dict) else None
         if action_type == "finish":
             answer = str(action.get("answer", ""))
             messages.append({"role": "assistant", "content": answer})
             event["finish"] = True
             trace["finished"] = True
+            trace["termination_reason"] = "finished"
             trace["final_answer"] = answer
             if task.schema_version in {"execution-v2", "recovery-v2"} and not environment.check_success(task.success_condition):
                 event["semantic_error"] = "premature_finish"
             trace["events"].append(event)
             break
 
-        if action_type != "tool_call" or not action.get("name"):
+        if action_type != "tool_call" or not isinstance(action.get("name"), str) or not action["name"]:
             event["error"] = "invalid_action"
             trace["events"].append(event)
+            _output_feedback(messages, action, "invalid_action")
             continue
 
         call_id = f"call_{step + 1}"
         name = str(action["name"])
-        arguments = action.get("arguments") or {}
+        arguments = action.get("arguments", {})
         if not isinstance(arguments, dict):
             event["error"] = "invalid_arguments"
             trace["events"].append(event)
+            _output_feedback(messages, action, "invalid_arguments")
             continue
 
         messages.append(_assistant_tool_message(action, call_id))
-        result = environment.execute(name, arguments)
+        executed_calls += 1
+        event["tool_executed"] = True
+        event["tool_call_index"] = executed_calls
+        try:
+            result = environment.execute(name, arguments)
+        except Exception as exc:
+            trace["runtime_error"] = f"{type(exc).__name__}: {exc}"
+            trace["internal_error"] = trace["runtime_error"]
+            trace["termination_reason"] = "internal_error"
+            event.update({"error": trace["runtime_error"], "error_category": "internal_error"})
+            trace["events"].append(event)
+            break
         messages.append(
             {
                 "role": "tool",

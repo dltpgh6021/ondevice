@@ -12,7 +12,21 @@ CONFIG_FIELDS = (
     "model_sha256", "model_label", "hostname", "platform", "processor", "machine",
     "seed", "tasks_sha256", "inference_settings", "shared_extra_action_turns", "max_calls",
     "dataset_language", "dataset_version", "dataset_sha256",
+    "metrics_version", "agent_policy_version",
 )
+
+VERSION_FIELDS = {"metrics_version", "agent_policy_version"}
+
+
+def _configuration_value(record: dict[str, Any], field: str) -> Any:
+    """Version tags can live in metadata, trace, or a previously scored row."""
+    if field in VERSION_FIELDS:
+        for section in ("metadata", "trace", "score"):
+            value = record.get(section, {}).get(field)
+            if value is not None and value != "":
+                return value
+        return "legacy-unversioned"
+    return record.get("metadata", {}).get(field)
 
 
 def _canonical(value: Any) -> str:
@@ -35,6 +49,7 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
         "total_matched_pairs": 0, "valid_pairs": 0, "excluded_invalid_pairs": 0,
         "excluded_invalid_records": 0, "ignored_legacy_or_free_records": 0,
         "unpairable_records": 0, "unpairable_record_ids": [],
+        "conflicting_version_records": 0, "conflicting_version_record_ids": [],
         "unmatched_normal_count": 0, "unmatched_error_count": 0,
         "unmatched_normal_ids": [], "unmatched_error_ids": [],
         "missing_metadata_fields": [], "limitations": [],
@@ -52,6 +67,21 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
             diagnostics["ignored_legacy_or_free_records"] += 1
             continue
         pair_id = task.get("id") or trace.get("pair_id")
+        conflicting_versions = []
+        for field in VERSION_FIELDS:
+            present = [record.get(section, {}).get(field)
+                       for section in ("metadata", "trace", "score")
+                       if record.get(section, {}).get(field) is not None
+                       and record.get(section, {}).get(field) != ""]
+            if any(not isinstance(value, str) for value in present) or len(set(map(_canonical, present))) > 1:
+                conflicting_versions.append(field)
+        if conflicting_versions:
+            diagnostics["unpairable_records"] += 1
+            diagnostics["conflicting_version_records"] += 1
+            if len(diagnostics["conflicting_version_record_ids"]) < 20:
+                diagnostics["conflicting_version_record_ids"].append({
+                    "task_id": str(pair_id or "unknown"), "fields": sorted(conflicting_versions)})
+            continue
         fixture = trace.get("fixture_sha256")
         checkpoint = trace.get("checkpoint_state_hash")
         goal = task.get("success_condition")
@@ -65,14 +95,17 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
                 diagnostics["unpairable_record_ids"].append(str(pair_id or "unknown"))
             continue
         label = metadata.get("model_label") or score.get("model_label") or "unknown"
-        config = {field: metadata.get(field) for field in CONFIG_FIELDS}
+        config = {field: _configuration_value(record, field) for field in CONFIG_FIELDS}
         config["model_label"] = label
         config["effective_max_calls"] = actual_budget
         for field in CONFIG_FIELDS:
             value = config[field]
             # Explicit None means an automatic per-horizon budget; its actual
             # value is independently required and matched above.
-            if field not in metadata or (field != "max_calls" and (value is None or value == "")):
+            if field in VERSION_FIELDS:
+                if value == "legacy-unversioned":
+                    missing_metadata.add(field)
+            elif field not in metadata or (field != "max_calls" and (value is None or value == "")):
                 missing_metadata.add(field)
         if label == "unknown":
             missing_metadata.add("model_label")
@@ -99,6 +132,8 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
         for record in (normal, error):
             trace, score = record["trace"], record.get("score", {})
             valid.append(trace.get("runtime_error") is None
+                         and trace.get("infrastructure_error") is None
+                         and trace.get("internal_error") is None
                          and score.get("valid_for_behavior_metrics") is not False
                          and isinstance(score.get("strict_success"), bool))
         diagnostics["excluded_invalid_records"] += valid.count(False)
@@ -123,6 +158,8 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
         error_rate = _mean([score["strict_success"] for score in error_scores])
         summaries.append({
             "model_label": label, "protocol_version": PROTOCOL, "horizon": int(horizon),
+            "metrics_version": config["metrics_version"],
+            "agent_policy_version": config["agent_policy_version"],
             "comparison_group": hashlib.sha256(config_text.encode("utf-8")).hexdigest()[:12],
             "hostname": config["hostname"], "configuration": config,
             "n_pairs": len(matched), "n_successful_error_runs": len(successful_error),
@@ -139,5 +176,5 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
             "Some configuration metadata is missing. Matching null fields cannot establish that those settings were identical.")
     if diagnostics["unpairable_records"]:
         diagnostics["limitations"].append(
-            "Records lacking fixture/checkpoint/goal/horizon/budget artifacts were excluded from pairing.")
+            "Records lacking pairing artifacts or carrying inconsistent version tags were excluded from pairing.")
     return {"summaries": summaries, "diagnostics": diagnostics}

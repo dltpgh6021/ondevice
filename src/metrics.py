@@ -154,36 +154,66 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
 
 
 def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[tuple[str, str, str, int], list[dict[str, Any]]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, str, str, int], list[dict[str, Any]]] = defaultdict(list)
     for result in results:
-        key = (result.get("model_label", "unknown"), result.get("protocol_version", "legacy-v1"), result["condition"], result["horizon"])
+        key = (result.get("model_label", "unknown"), result.get("protocol_version", "legacy-v1"),
+               result.get("metrics_version", "legacy-unversioned"),
+               result.get("agent_policy_version", "legacy-unversioned"),
+               result["condition"], result["horizon"])
         groups[key].append(result)
 
     summaries: list[dict[str, Any]] = []
-    for (model_label, protocol_version, condition, horizon), rows in sorted(groups.items()):
+    for (model_label, protocol_version, metrics_version, agent_policy_version, condition, horizon), rows in sorted(groups.items()):
         count = len(rows)
         valid_rows = [row for row in rows if row.get("valid_for_behavior_metrics", True)]
         is_recovery = condition in {"recovery", "error_restart"}
 
         def mean(name: str) -> float | None:
             source = [row for row in valid_rows if row.get("strict_success")] if name.startswith("extra_calls") else valid_rows
-            values = [row[name] for row in source if isinstance(row.get(name), (int, float))]
+            values = [row[name] for row in source if isinstance(row.get(name), (int, float))
+                      and not isinstance(row[name], bool)]
             return round(sum(values) / len(values), 4) if values else None
 
         def rate(name: str) -> float | None:
             values = [row[name] for row in valid_rows if isinstance(row.get(name), bool)]
             return round(sum(values) / len(values), 4) if values else None
 
+        def pooled(numerator: str, denominator: str) -> float | None:
+            available = [row for row in valid_rows
+                         if isinstance(row.get(numerator), (int, float)) and not isinstance(row[numerator], bool)
+                         and isinstance(row.get(denominator), (int, float)) and not isinstance(row[denominator], bool)]
+            total = sum(row[denominator] for row in available)
+            return round(sum(row[numerator] for row in available) / total, 4) if total else None
+
+        error_episodes = [row["error_count"] > 0 for row in valid_rows
+                          if isinstance(row.get("error_count"), (int, float))]
+
         summaries.append(
             {
                 "model_label": model_label,
                 "protocol_version": protocol_version,
+                "metrics_version": metrics_version,
+                "agent_policy_version": agent_policy_version,
                 "condition": condition,
                 "horizon": horizon,
                 "n": count,
                 "n_valid": len(valid_rows),
                 "n_runtime_errors": count - len(valid_rows),
+                "n_infrastructure_errors": sum(row.get("infrastructure_error_count", 0) for row in rows),
+                "n_internal_errors": sum(row.get("internal_error_count", 0) for row in rows),
+                "n_unclassified_runtime_errors": sum(row.get("unclassified_runtime_error_count", 0) for row in rows),
+                "n_budget_exhausted": sum(row.get("budget_exhausted") is True for row in valid_rows),
                 "success_rate": rate("strict_success"),
+                "behavior_error_episode_rate": round(sum(error_episodes) / len(error_episodes), 4) if error_episodes else None,
+                "mean_error_count": mean("error_count"),
+                "mean_model_output_error_count": mean("model_output_error_count"),
+                "mean_response_turn_count": mean("response_turn_count"),
+                "mean_attempted_tool_call_count": mean("attempted_tool_call_count"),
+                "mean_executed_tool_call_count": mean("executed_tool_call_count"),
+                "mean_error_turn_rate": mean("error_turn_rate"),
+                "pooled_error_turn_rate": pooled("error_count", "response_turn_count"),
+                "mean_tool_action_error_rate": mean("tool_action_error_rate"),
+                "pooled_tool_action_error_rate": pooled("tool_error_action_count", "executed_tool_call_count"),
                 "natural_error_rate": rate("natural_error") if condition == "free" else None,
                 "next_action_accuracy": rate("next_action_correct")
                 if condition == "normal_restart"
@@ -203,6 +233,9 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_recovery_invalid_action_count": mean("recovery_invalid_action_count")
                 if is_recovery
                 else None,
+                "mean_recovery_model_output_error_count": mean("recovery_model_output_error_count")
+                if is_recovery
+                else None,
                 "mean_recovery_first_error_step": mean("recovery_first_error_step")
                 if is_recovery
                 else None,
@@ -214,6 +247,8 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_extra_calls_over_oracle": mean("extra_calls_over_oracle"),
                 "recovery_error_resolved_rate": rate("recovery_error_resolved") if is_recovery else None,
                 "mean_recovery_resolution_step": mean("recovery_resolution_step") if is_recovery else None,
+                "mean_recovery_first_resolution_turn": mean("recovery_first_resolution_turn") if is_recovery else None,
+                "mean_recovery_stable_resolution_turn": mean("recovery_stable_resolution_turn") if is_recovery else None,
                 "mean_recovery_semantic_error_count": mean("recovery_semantic_error_count") if is_recovery else None,
                 "mean_prompt_tokens": mean("prompt_tokens"),
                 "mean_completion_tokens": mean("completion_tokens"),

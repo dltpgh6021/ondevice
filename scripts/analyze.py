@@ -19,17 +19,27 @@ from src.tasks import canonical_json
 def validate_analysis_configurations(records: list[dict[str, Any]]) -> None:
     """The generic tables/plots require one known configuration per model/protocol."""
     signatures: dict[tuple[str, str], set[str]] = {}
+    protocols_by_condition: dict[tuple[str, str], set[str]] = {}
     for record in records:
         metadata, trace, score = record.get("metadata", {}), record.get("trace", {}), record.get("score", {})
         label = metadata.get("model_label") or score.get("model_label", "unknown")
         protocol = trace.get("protocol_version") or score.get("protocol_version", "legacy-v1")
+        condition = trace.get("condition") or score.get("condition", "unknown")
+        protocols_by_condition.setdefault((label, condition), set()).add(protocol)
         config = {field: metadata.get(field) for field in CONFIG_FIELDS}
+        for field in ("metrics_version", "agent_policy_version"):
+            config[field] = metadata.get(field) or trace.get(field) or score.get(field)
         config["model_label"] = label
         signatures.setdefault((label, protocol), set()).add(canonical_json(config))
     conflicting = [f"{label}/{protocol}" for (label, protocol), values in signatures.items() if len(values) > 1]
     if conflicting:
         raise ValueError("Mixed devices/model hashes/tasks/seeds/settings/budgets for " + ", ".join(conflicting)
                          + ". Analyze each configuration separately or use different model labels.")
+    mixed_protocols = [f"{label}/{condition}" for (label, condition), values
+                       in protocols_by_condition.items() if len(values) > 1]
+    if mixed_protocols:
+        raise ValueError("Mixed task protocols for " + ", ".join(mixed_protocols)
+                         + ". Analyze legacy and current protocols separately.")
 
 
 def _storage_by_label(manifest_path: str | Path | None) -> dict[str, dict[str, Any]]:
@@ -135,6 +145,8 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
         axis.set_title(title)
         axis.set_xlabel("Horizon")
         axis.set_ylabel(ylabel)
+        if metric.endswith("rate"):
+            axis.set_ylim(0, 1)
         axis.set_xticks(sorted({row["horizon"] for row in summaries}))
         axis.grid(alpha=0.25)
         axis.legend()
@@ -146,7 +158,10 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
 
     plot_metric("success_rate_free_by_horizon.png", "Execution success rate by horizon", "success_rate", "free", "Success rate")
     plot_metric("natural_error_rate_free_by_horizon.png", "Natural error rate by horizon", "natural_error_rate", "free", "Natural error rate")
+    plot_metric("error_turn_rate_free_by_horizon.png", "Execution errors per response turn", "pooled_error_turn_rate", "free", "Error turns / response turns")
+    plot_metric("tool_action_error_rate_free_by_horizon.png", "Execution errors per executed tool call", "pooled_tool_action_error_rate", "free", "Erroneous calls / executed calls")
     plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon", "recovery_rate", "error_restart", "Recovery rate")
+    plot_metric("error_turn_rate_recovery_by_horizon.png", "Recovery errors per response turn", "pooled_error_turn_rate", "error_restart", "Error turns / response turns")
     plot_metric("normal_restart_success_by_horizon.png", "Matched normal restart success", "success_rate", "normal_restart", "Success rate")
     plot_metric("elapsed_ms_free_by_horizon.png", "Execution time by horizon", "mean_elapsed_ms", "free", "Mean elapsed time (ms)")
     plot_metric("server_ram_free_by_horizon.png", "Peak server RAM by horizon", "mean_peak_server_ram_mb", "free", "Mean peak server RAM (MB)")

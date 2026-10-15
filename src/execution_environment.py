@@ -161,7 +161,7 @@ class ExecutionEnvironment(MockEnvironment):
         if not paired_recovery and condition in {"recovery", "error_restart"}:
             raise ValueError("error_restart requires a recovery-v2 fixture")
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT + " Use English for all responses. Resource IDs must come from the user context or tool results. Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed."},
+            {"role": "system", "content": SYSTEM_PROMPT + " Use English for all responses. Return at most one tool call per response; multiple calls in one response are rejected without executing any of them. Invalid output receives only generic format feedback and consumes a response turn. Resource IDs must come from the user context or tool results. Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed."},
             {"role": "user", "content": task.query},
         ]
         prefix = list(task.initial_actions or [])
