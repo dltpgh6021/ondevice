@@ -106,6 +106,7 @@ def collect_metadata(
         "platform": platform.platform(),
         "machine": platform.machine(),
         "processor": platform.processor(),
+        "hostname": platform.node(),
         "llama_cpp_version": None,
         "tasks_sha256": sha256_file(tasks_path),
         "created_at_unix": time.time(),
@@ -132,7 +133,9 @@ def run_batch(
         for task in tasks:
             environment = environment_for_task(task)
             required_calls = task.horizon
-            if condition != "free":
+            if task.schema_version == "recovery-v2":
+                required_calls = task.normal_remaining_calls
+            elif condition != "free":
                 required_calls = max(0, task.horizon - task.checkpoint_step)
             allowed_calls = max_calls if max_calls is not None else required_calls + recovery_budget
             server_ram_monitor = ProcessRamMonitor(
@@ -151,6 +154,7 @@ def run_batch(
             finally:
                 trace_server_peak_ram_mb = server_ram_monitor.stop()
             trace["max_calls"] = allowed_calls
+            trace["budget_basis"] = "normal_remaining_calls + shared extra action turns"
             trace["max_ram_mb"] = current_ram_mb()
             trace["peak_server_ram_mb"] = trace_server_peak_ram_mb
             score = score_trace(task, trace)
@@ -171,6 +175,9 @@ def run_batch(
                     "error_description": task.error_description,
                     "error_injection": task.error_injection,
                     "success_condition": task.success_condition,
+                    "normal_remaining_calls": task.normal_remaining_calls,
+                    "recovery_min_calls": task.recovery_min_calls,
+                    "recovery_actions": task.recovery_actions,
                 },
                 "trace": trace,
                 "score": score,

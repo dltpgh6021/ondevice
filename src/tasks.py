@@ -27,6 +27,9 @@ class Task:
     schema_version: str = "legacy-v1"
     initial_actions: list[dict[str, Any]] | None = None
     execution_spec: dict[str, Any] | None = None
+    recovery_actions: list[dict[str, Any]] | None = None
+    normal_remaining_calls: int | None = None
+    recovery_min_calls: int | None = None
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Task":
@@ -46,6 +49,9 @@ class Task:
             schema_version=str(data.get("schema_version", "legacy-v1")),
             initial_actions=list(data.get("initial_actions", [])),
             execution_spec=data.get("execution_spec"),
+            recovery_actions=list(data.get("recovery_actions", [])),
+            normal_remaining_calls=int(data["normal_remaining_calls"]) if "normal_remaining_calls" in data else None,
+            recovery_min_calls=int(data["recovery_min_calls"]) if "recovery_min_calls" in data else None,
         )
         validate_task(task)
         return task
@@ -74,6 +80,15 @@ def validate_task(task: Task) -> None:
             raise ValueError(f"{task.task_id}: initial context and remaining horizon must total 5")
     if task.task_type == "recovery" and not task.error_injection:
         raise ValueError(f"{task.task_id}: recovery task requires error_injection")
+    if task.schema_version == "recovery-v2":
+        if task.task_type != "recovery" or not task.execution_spec or task.recovery_query:
+            raise ValueError(f"{task.task_id}: recovery-v2 requires a fixture and the original query only")
+        if len(task.initial_actions or []) + task.horizon != 5 or task.checkpoint_step != 0:
+            raise ValueError(f"{task.task_id}: invalid recovery checkpoint")
+        if task.normal_remaining_calls != task.horizon or task.recovery_min_calls != task.horizon + 1:
+            raise ValueError(f"{task.task_id}: normal/recovery minimum must be h and h+1")
+        if len(task.recovery_actions or []) != task.recovery_min_calls:
+            raise ValueError(f"{task.task_id}: recovery oracle length differs from recovery_min_calls")
     for index, action in enumerate(task.gold_actions):
         if not isinstance(action, dict) or not action.get("tool"):
             raise ValueError(f"{task.task_id}: invalid gold action at {index}")

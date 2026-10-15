@@ -46,6 +46,10 @@ def _final_state_success(state: dict[str, Any], condition: dict[str, Any]) -> bo
 
 
 def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
+    if task.schema_version in {"execution-v2", "recovery-v2"}:
+        from .workflow_metrics import score_workflow_trace
+
+        return score_workflow_trace(task, trace)
     condition = trace["condition"]
     observed = _tool_events(trace)
     expected = task.gold_actions
@@ -150,56 +154,67 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
 
 
 def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[tuple[str, str, int], list[dict[str, Any]]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, int], list[dict[str, Any]]] = defaultdict(list)
     for result in results:
-        key = (result.get("model_label", "unknown"), result["condition"], result["horizon"])
+        key = (result.get("model_label", "unknown"), result.get("protocol_version", "legacy-v1"), result["condition"], result["horizon"])
         groups[key].append(result)
 
     summaries: list[dict[str, Any]] = []
-    for (model_label, condition, horizon), rows in sorted(groups.items()):
+    for (model_label, protocol_version, condition, horizon), rows in sorted(groups.items()):
         count = len(rows)
+        valid_rows = [row for row in rows if row.get("valid_for_behavior_metrics", True)]
+        is_recovery = condition in {"recovery", "error_restart"}
 
         def mean(name: str) -> float | None:
-            values = [row[name] for row in rows if isinstance(row.get(name), (int, float))]
+            source = [row for row in valid_rows if row.get("strict_success")] if name.startswith("extra_calls") else valid_rows
+            values = [row[name] for row in source if isinstance(row.get(name), (int, float))]
             return round(sum(values) / len(values), 4) if values else None
 
         def rate(name: str) -> float | None:
-            values = [row[name] for row in rows if isinstance(row.get(name), bool)]
+            values = [row[name] for row in valid_rows if isinstance(row.get(name), bool)]
             return round(sum(values) / len(values), 4) if values else None
 
         summaries.append(
             {
                 "model_label": model_label,
+                "protocol_version": protocol_version,
                 "condition": condition,
                 "horizon": horizon,
                 "n": count,
+                "n_valid": len(valid_rows),
+                "n_runtime_errors": count - len(valid_rows),
                 "success_rate": rate("strict_success"),
                 "natural_error_rate": rate("natural_error") if condition == "free" else None,
                 "next_action_accuracy": rate("next_action_correct")
                 if condition == "normal_restart"
                 else None,
                 "recovery_rate": rate("recovery_success")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_extra_calls": mean("extra_calls")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_recovery_error_count": mean("recovery_error_count")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_recovery_tool_error_count": mean("recovery_tool_error_count")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_recovery_invalid_action_count": mean("recovery_invalid_action_count")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_recovery_first_error_step": mean("recovery_first_error_step")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_recovery_completion_step": mean("recovery_completion_step")
-                if condition == "recovery"
+                if is_recovery
                 else None,
                 "mean_elapsed_ms": mean("elapsed_ms"),
+                "mean_extra_calls_over_normal": mean("extra_calls_over_normal"),
+                "mean_extra_calls_over_oracle": mean("extra_calls_over_oracle"),
+                "recovery_error_resolved_rate": rate("recovery_error_resolved") if is_recovery else None,
+                "mean_recovery_resolution_step": mean("recovery_resolution_step") if is_recovery else None,
+                "mean_recovery_semantic_error_count": mean("recovery_semantic_error_count") if is_recovery else None,
                 "mean_prompt_tokens": mean("prompt_tokens"),
                 "mean_completion_tokens": mean("completion_tokens"),
                 "mean_max_ram_mb": mean("max_ram_mb"),

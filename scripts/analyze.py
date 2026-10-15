@@ -12,6 +12,24 @@ sys.path.insert(0, str(ROOT))
 
 from src.experiment import load_records
 from src.metrics import aggregate
+from src.recovery_comparison import compare_recovery_records, CONFIG_FIELDS
+from src.tasks import canonical_json
+
+
+def validate_analysis_configurations(records: list[dict[str, Any]]) -> None:
+    """The generic tables/plots require one known configuration per model/protocol."""
+    signatures: dict[tuple[str, str], set[str]] = {}
+    for record in records:
+        metadata, trace, score = record.get("metadata", {}), record.get("trace", {}), record.get("score", {})
+        label = metadata.get("model_label") or score.get("model_label", "unknown")
+        protocol = trace.get("protocol_version") or score.get("protocol_version", "legacy-v1")
+        config = {field: metadata.get(field) for field in CONFIG_FIELDS}
+        config["model_label"] = label
+        signatures.setdefault((label, protocol), set()).add(canonical_json(config))
+    conflicting = [f"{label}/{protocol}" for (label, protocol), values in signatures.items() if len(values) > 1]
+    if conflicting:
+        raise ValueError("Mixed devices/model hashes/tasks/seeds/settings/budgets for " + ", ".join(conflicting)
+                         + ". Analyze each configuration separately or use different model labels.")
 
 
 def _storage_by_label(manifest_path: str | Path | None) -> dict[str, dict[str, Any]]:
@@ -128,7 +146,8 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
 
     plot_metric("success_rate_free_by_horizon.png", "Execution success rate by horizon", "success_rate", "free", "Success rate")
     plot_metric("natural_error_rate_free_by_horizon.png", "Natural error rate by horizon", "natural_error_rate", "free", "Natural error rate")
-    plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon", "recovery_rate", "recovery", "Recovery rate")
+    plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon", "recovery_rate", "error_restart", "Recovery rate")
+    plot_metric("normal_restart_success_by_horizon.png", "Matched normal restart success", "success_rate", "normal_restart", "Success rate")
     plot_metric("elapsed_ms_free_by_horizon.png", "Execution time by horizon", "mean_elapsed_ms", "free", "Mean elapsed time (ms)")
     plot_metric("server_ram_free_by_horizon.png", "Peak server RAM by horizon", "mean_peak_server_ram_mb", "free", "Mean peak server RAM (MB)")
     return files
@@ -146,6 +165,10 @@ def main() -> int:
     records: list[dict[str, Any]] = []
     for path in args.paths:
         records.extend(load_records(path))
+    try:
+        validate_analysis_configurations(records)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     scores: list[dict[str, Any]] = []
     for record in records:
         score = dict(record["score"])
@@ -159,31 +182,19 @@ def main() -> int:
         summary["model_storage_mb"] = info.get("size_mb") if info else None
         summary["model_quantization"] = info.get("quantization") if info else None
 
-    by_key = {(row["model_label"], row["horizon"], row["condition"]): row for row in condition_summaries}
-    recovery_comparison = []
-    for (model_label, horizon, condition), normal_row in by_key.items():
-        if condition != "free":
-            continue
-        recovery_row = by_key.get((model_label, horizon, "recovery"))
-        if not recovery_row:
-            continue
-        normal_rate = normal_row.get("success_rate")
-        recovery_rate = recovery_row.get("recovery_rate")
-        recovery_comparison.append(
-            {
-                "model_label": model_label,
-                "horizon": horizon,
-                "normal_success_rate": normal_rate,
-                "recovery_rate": recovery_rate,
-                "recovery_gap": round(normal_rate - recovery_rate, 4)
-                if normal_rate is not None and recovery_rate is not None
-                else None,
-                "mean_extra_calls": recovery_row.get("mean_extra_calls"),
-            }
-        )
-    result = {"condition_summaries": condition_summaries, "recovery_comparison": recovery_comparison}
+    paired = compare_recovery_records(records)
+    result = {"condition_summaries": condition_summaries,
+              "recovery_comparison": paired["summaries"],
+              "recovery_pairing": paired["diagnostics"]}
     if args.csv_output:
         _write_csv(condition_summaries, args.csv_output)
+        if paired["summaries"]:
+            csv_path = Path(args.csv_output)
+            paired_path = csv_path.with_name(csv_path.stem + "_paired.csv")
+            rows = [{key: value for key, value in row.items() if key != "configuration"}
+                    for row in paired["summaries"]]
+            _write_csv(rows, paired_path)
+            result["paired_csv"] = str(paired_path)
     if args.plot_dir:
         result["plots"] = _write_plots(condition_summaries, args.plot_dir)
     text = json.dumps(result, ensure_ascii=False, indent=2)

@@ -53,9 +53,10 @@ class ExecutionEnvironment(MockEnvironment):
         self.spec = copy.deepcopy(spec)
         self.names = WORKFLOWS[spec["domain"]]["names"]
         self.state: dict[str, Any] = {
-            "contexts": {}, "offers": {}, "details": {}, "drafts": {},
+            "contexts": {}, "offers": {}, "details": {}, "drafts": copy.deepcopy(spec.get("initial_drafts", {})),
             "completed_requests": {},
         }
+        self.preparation_metadata: dict[str, Any] = {}
 
     def tool_definitions(self) -> list[dict[str, Any]]:
         noun = WORKFLOWS[self.spec["domain"]]["noun"]
@@ -65,6 +66,7 @@ class ExecutionEnvironment(MockEnvironment):
             (self.names[2], "Read an existing offer. Returns detail_id and available option IDs with their conditions.", {"offer_id": "Offer ID returned by the search tool."}),
             (self.names[3], f"Prepare a {noun} draft using a detail_id and an option_id from that detail. Returns draft_id and the full proposed result. Does not complete the task.", {"detail_id": "Detail ID returned by the detail tool.", "option_id": "Option ID listed in that detail."}),
             (self.names[4], f"Confirm an existing draft_id to save the final {noun}. Reconfirming another draft for the same request replaces its earlier result.", {"draft_id": "Draft ID returned by the preparation tool."}),
+            ("discard_saved_result", "Delete one saved result by its request_id. Only discard results that do not belong in the user's requested final set; this does not create or confirm a result.", {"request_id": "Request ID of the saved result to discard."}),
             ("inspect_state", "Read only the saved final result. Does not expose private fixtures or create workflow resources.", {}),
         )
         return [
@@ -139,20 +141,31 @@ class ExecutionEnvironment(MockEnvironment):
             completion = self.state["drafts"].get(arguments["draft_id"])
             if completion is None:
                 return self._failed("draft_not_found", hint="Prepare a draft first.")
-            self.state["completed_requests"][request_id] = copy.deepcopy(completion)
+            self.state["completed_requests"][completion["request_id"]] = copy.deepcopy(completion)
             return {"ok": True, "saved_result": copy.deepcopy(completion)}
+
+        if tool_name == "discard_saved_result":
+            removed = self.state["completed_requests"].pop(arguments["request_id"], None)
+            if removed is None:
+                return self._failed("saved_result_not_found")
+            return {"ok": True, "removed_result": copy.deepcopy(removed)}
 
         return {"ok": True, "completed_requests": copy.deepcopy(self.state["completed_requests"])}
 
     def prepare_condition(self, task: Task, condition: str) -> tuple[list[dict[str, Any]], str | None]:
-        if condition not in {"free", "normal_restart"}:
-            raise ValueError("execution-v2 only supports free and normal_restart; recovery redesign is pending")
+        if condition not in {"free", "normal_restart", "recovery", "error_restart"}:
+            raise ValueError(f"unsupported condition: {condition}")
+        paired_recovery = task.schema_version == "recovery-v2"
+        if paired_recovery and condition == "free":
+            raise ValueError("recovery-v2 must use normal_restart or error_restart")
+        if not paired_recovery and condition in {"recovery", "error_restart"}:
+            raise ValueError("error_restart requires a recovery-v2 fixture")
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT + " Resource IDs must come from the user context or tool results. Use the request ranking rule, including its tie-breaker. Prepared drafts are not final until confirmed."},
             {"role": "user", "content": task.query},
         ]
         prefix = list(task.initial_actions or [])
-        if condition == "normal_restart":
+        if condition == "normal_restart" and not paired_recovery:
             prefix += task.gold_actions[:task.checkpoint_step]
         for index, action in enumerate(prefix):
             result = self.execute(action["tool"], action.get("arguments", {}))
@@ -164,8 +177,51 @@ class ExecutionEnvironment(MockEnvironment):
             }}]})
             messages.append({"role": "tool", "tool_call_id": call_id, "name": action["tool"],
                              "content": json.dumps(result, ensure_ascii=False)})
-        remaining = task.gold_actions[task.checkpoint_step:] if condition == "normal_restart" else task.gold_actions
+        self.preparation_metadata = {
+            "checkpoint_state": self.snapshot(), "checkpoint_state_hash": self.state_hash(),
+            "resume_workflow_step": len(prefix), "injected_actions": [],
+            "fixture_sha256": stable_hash(self.spec),
+            "protocol_version": "extra-saved-record-v2" if paired_recovery else "execution-v2",
+            "initial_artifact_provenance": "provided stale draft in fixture; no natural prior session is implied" if paired_recovery else None,
+        }
+        if condition in {"recovery", "error_restart"}:
+            injection = task.error_injection or {}
+            if injection.get("type") != "extra_saved_record":
+                raise ValueError(f"{task.task_id}: unsupported recovery injection")
+            action = injection["action"]
+            result = self.execute(action["tool"], action["arguments"])
+            if not result.get("ok"):
+                raise ValueError(f"{task.task_id}: injection failed: {result}")
+            call_id = "injected_1"
+            messages.append({"role": "assistant", "tool_calls": [{"id": call_id, "type": "function", "function": {
+                "name": action["tool"], "arguments": json.dumps(action["arguments"], ensure_ascii=False),
+            }}]})
+            messages.append({"role": "tool", "tool_call_id": call_id, "name": action["tool"], "content": json.dumps(result, ensure_ascii=False)})
+            self.preparation_metadata["injected_actions"] = [{"action": copy.deepcopy(action), "result": copy.deepcopy(result)}]
+        remaining = task.gold_actions[task.checkpoint_step:] if condition == "normal_restart" and not paired_recovery else task.gold_actions
         return messages, remaining[0]["tool"] if remaining else None
+
+    def result_matches_request(self, completion: dict[str, Any]) -> bool:
+        """Judge saved choices using public constraints, not gold action order."""
+        request = self.spec["request"]
+        eligible = [candidate for candidate in self.spec["candidates"] if all(
+            candidate["summary"][key[4:]] >= value if key.startswith("min_") else candidate["summary"][key[4:]] <= value
+            for key, value in request["constraints"].items()
+        )]
+        def rank(candidate: dict[str, Any]) -> tuple:
+            return tuple(candidate["summary"][rule["field"]] * (1 if rule["direction"] == "min" else -1)
+                         for rule in request["ranking"])
+        best = min(eligible, key=rank)
+        options = [option for option in best["options"] if option["available"] and option["kind"] == request["required_option_kind"]]
+        return completion.get("request_id") == self.spec["request_id"] and completion.get("candidate_id") == best["candidate_id"] and any(
+            completion.get("option_id") == option["option_id"] for option in options)
+
+    def assess_action_result(self, result: dict[str, Any]) -> str | None:
+        if result.get("ok") and "saved_result" in result and not self.result_matches_request(result["saved_result"]):
+            return "saved_result_violates_request"
+        if result.get("ok") and "removed_result" in result and self.result_matches_request(result["removed_result"]):
+            return "removed_requested_result"
+        return None
 
     def check_success(self, condition: dict[str, Any]) -> bool:
         return completion_condition_matches(self.state, condition)

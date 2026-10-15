@@ -2,7 +2,7 @@
 
 양자화가 장기 Agent의 수행 안정성에 미치는 영향을 비교하는 실험 저장소입니다.
 
-**현재 단계:** execution 60개를 `execution-v2`로 재설계했습니다. 기존 recovery 60개는 아직 `legacy-v1`이며 새 execution과 의미상 대응하지 않습니다. 회복 실험과 오류 지표 보완이 끝나기 전에는 본실험이나 `recovery_gap` 해석을 시작하지 않습니다. 아래 recovery 실행법은 구버전 동작을 확인하는 개발용 설명입니다.
+**현재 단계:** execution 60개와 recovery 60개를 v2로 재설계했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. 워밍업·서버 설정 고정·VRAM·반복 실행 관리는 여전히 본실험 전에 보완해야 합니다.
 
 이 프로젝트는 FP16·Q8·Q4 모델을 같은 Agent framework와 동일한 mock tool 환경에서 실행합니다. 최종 성공률만 비교하지 않고, 다음 두 현상을 분리해 측정합니다.
 
@@ -12,25 +12,25 @@
 ## 실험 조건과 task 유형
 
 - `free`: `execution` task를 초기 상태에서 처음부터 수행합니다. 양자화 수준과 horizon에 따른 도구 선택·정상 수행을 측정합니다.
-- `recovery`: `recovery` task를 이미 잘못된 상태에서 시작합니다. 같은 오류를 받은 뒤 복구하는 능력을 측정합니다.
-- `normal_restart`: 모든 모델에 동일한 올바른 중간 상태를 제공합니다.
+- `normal_restart`: 회복 task 60개를 공통의 정상 checkpoint에서 재개합니다.
+- `error_restart`: 같은 회복 task 60개에서 잘못된 추가 저장 결과를 만든 도구 호출·관측을 제공한 뒤 재개합니다. `recovery`는 이 조건의 호환 별칭입니다.
 
 execution-v2의 `horizon`은 제공된 정상 시작 상태에서 완료까지 **남아 있는 필수 도구 호출 수**입니다. 5단계 작업 흐름 중 h1에는 앞 4단계, h3에는 앞 2단계의 정상 도구 결과가 대화 기록으로 제공됩니다. h5는 요청 조회부터 모델이 수행합니다. 미리 제공한 호출과 종료 응답은 horizon에 포함하지 않습니다. 실행 중 실제 호출 수·추가 호출 수는 별도로 기록합니다.
 
 ## 현재 구현 범위
 
-현재 파일에는 새 정상 수행 60개와 구버전 회복 수행 60개, 총 120개 task가 있습니다. execution-v2의 60개는 20개 기본 시나리오의 시작 정보 3조건이며, 서로 독립인 60개 질문이 아닙니다. [시나리오 전체 목록](tasks/EXECUTION_TASKS.md)에서 실제 요청 내용을 확인할 수 있습니다.
+현재 파일에는 정상 수행 60개와 대응 회복 fixture 60개, 총 120개 task가 있습니다. 60개는 20개 기본 시나리오의 시작 정보 3조건이며, 서로 독립인 60개 질문이 아닙니다. [정상 시나리오](tasks/EXECUTION_TASKS.md)와 [회복 설계·목록](tasks/RECOVERY_TASKS.md)에서 요청과 오류 조건을 확인할 수 있습니다.
 
 - 결정론적 mock tool 환경
 - 정상 상태와 오류 상태의 checkpoint 생성
 - 오류 상태 주입
-- 오류 상태에서 사용하는 회복 전용 질문(`recovery_query`)
+- 원래 질문을 유지하며 실제 오류 호출·관측이 보이는 checkpoint 기록
 - FakeClient를 이용한 모델 없는 smoke test
 - llama.cpp 서버와 통신하는 HTTP client
 - 성공률·오류 위치·회복률·추가 호출 수 집계
 - 실행 환경과 task/model hash 기록
 
-새 execution은 같은 기본 시나리오의 질문·후보·선택 규칙·최종 목표를 h1·h3·h5에서 동일하게 유지합니다. 시작할 때 이미 제공되는 정상 작업 결과의 깊이만 달라집니다. recovery와의 ID 대응 관계는 남아 있지만, 실제 내용의 대응 관계는 다음 회복 task 재설계에서 맞출 예정입니다.
+execution은 같은 기본 시나리오의 질문·후보·선택 규칙·최종 목표를 h1·h3·h5에서 동일하게 유지합니다. 회복 fixture도 이 질문·목표·정상 기록을 공유하며, 오래된 draft가 공통 초기 자료로 추가됩니다. 정상/오류 분기는 같은 fixture에서 갈라집니다.
 
 현재 `tasks/tasks.json`에는 다음 120개가 포함되어 있습니다.
 
@@ -44,9 +44,7 @@ execution-v2의 `horizon`은 제공된 정상 시작 상태에서 완료까지 *
 | 회복 수행 | 5 | 5 | 5 | 5 | 5 | 20 |
 | 합계 | - | 30 | 30 | 30 | 30 | 120 |
 
-`task_type`이 `execution`이면 정상 수행 task이고, `recovery`이면 회복 task입니다. 회복 task는 checkpoint를 재생하지 않고 처음부터 오류를 주입한 상태에서 시작합니다. 오류 유형은 현재 장바구니의 잘못된 상품, 잘못된 일정, stale 결과를 사용합니다.
-
-이 회복 동작은 구버전 설명이며, 현재 연구용 회복 프로토콜로 검증된 상태는 아닙니다.
+`task_type`이 `execution`이면 정상 수행 task이고, `recovery`이면 정상/오류 두 분기에 공통으로 사용할 회복 fixture입니다. `task_type`과 실제 실행 `condition`을 구분합니다. 모델당 execution 60회 + 회복 정상 분기 60회 + 오류 분기 60회 = 180회이며, FP16·Q8·Q4를 모두 실행하면 반복 전 총 540회입니다.
 
 ## execution-v2의 실제 단계 의존성
 
@@ -65,7 +63,7 @@ execution-v2의 `horizon`은 제공된 정상 시작 상태에서 완료까지 *
 
 각 시나리오는 적격 후보 2개와 조건을 위반하는 후보 1개, 후보별 옵션 2개를 가집니다. 일부 시나리오는 1순위 점수가 같아 명시된 2순위 기준을 적용해야 합니다. 금액은 가상 단위이고 `start_hour`·`depart_hour`는 해당 날짜의 24시간제 정수 시각입니다.
 
-현재 `natural_error`·`first_error_step`는 여전히 정답 경로와의 순서·인자 비교 방식입니다. 유효한 추가 조회까지 오류로 잡을 수 있으므로 연구용 오류 지표로 사용하기 전에 별도 수정해야 합니다. 이번 작업은 execution 과제와 최종 성공 판정의 재설계이며, 기존 오류 지표·회복 프로토콜·서버 측정 설정의 보완 완료를 뜻하지 않습니다.
+v2의 `natural_error`·`first_error_step`는 정답 경로의 순서를 비교하지 않습니다. 도구/인자 오류, 요청을 위반한 결과 확정, 올바른 결과 삭제, 미완료 상태의 종료를 셉니다. 유효한 추가 조회·다른 후보 탐색·삭제 순서 차이는 오류가 아닙니다. 준비만 한 잘못된 draft 등 모든 계획 오류를 포착하는 지표는 아닙니다. JSON 파싱 예외와 통신 예외의 세부 구분은 아직 보완 대상이며, 현재 `runtime_error`가 있는 실행은 행동 지표에서 제외하고 별도 개수로 보고합니다.
 
 이 설계는 **동일 작업 흐름에서 남은 의존 단계 수**의 효과를 비교합니다. 시작 정보량과 이미 완료된 작업도 달라지므로 일반 과제의 길이만 바꾼 결과라고 해석하지 않습니다. h1은 올바르게 준비된 결과를 확정하므로 후보 선택 능력은 h3·h5에서 주로 비교합니다. 현재 4개 분야는 같은 5단계 구조를 사용하며, 다양한 현실 Agent 작업 전체를 대표하지는 않습니다.
 
@@ -82,6 +80,9 @@ ondevice/
 │  ├─ environment.py    # 결정론적 mock tool과 상태 관리
 │  ├─ execution_environment.py # 리소스 의존성이 있는 execution-v2 도구
 │  ├─ execution_validation.py  # 정답·우회 경로·최종 상태 검증
+│  ├─ recovery_validation.py   # 대응 checkpoint·복구 필요성 검증
+│  ├─ recovery_comparison.py   # 동일 조건의 정상/오류 쌍 비교
+│  ├─ workflow_metrics.py      # 상태·행동 기반 v2 지표
 │  ├─ agent.py          # 공통 Agent 실행 루프
 │  ├─ metrics.py        # 성공·오류·회복 지표
 │  └─ experiment.py     # batch 실행과 메타데이터 기록
@@ -89,6 +90,7 @@ ondevice/
    ├─ smoke_test.py     # 모델 없이 전체 흐름 검사
    ├─ validate_tasks.py  # task 중복·누락·대응 관계 검증
    ├─ build_execution_tasks.py # 20개 시나리오 정의와 JSON 일치 검사
+   ├─ build_recovery_tasks.py  # execution과 대응하는 회복 fixture 생성·검사
    ├─ run_experiment.py # 실제 llama.cpp 실행
    └─ analyze.py        # JSONL 결과 집계
 ```
@@ -134,7 +136,7 @@ python scripts\smoke_test.py
 python scripts\validate_tasks.py
 ```
 
-WSL/macOS에서는 `python scripts/validate_tasks.py`를 사용합니다. `valid: true`는 전체 구성과 새 execution 검증이 통과했다는 뜻이며, 구버전 recovery의 실험 타당성을 보장하지 않습니다. 출력의 `recovery_semantics`에도 재설계 대기 상태가 표시됩니다.
+WSL/macOS에서는 `python scripts/validate_tasks.py`를 사용합니다. `valid: true`와 `execution_semantics.valid`, `recovery_semantics.valid`가 모두 true이면 구성과 두 task 유형의 코드 검증이 통과한 것입니다. 실제 모델의 능력이나 논문 결론이 검증됐다는 뜻은 아닙니다.
 
 검증 항목은 다음과 같습니다.
 
@@ -149,8 +151,11 @@ WSL/macOS에서는 `python scripts/validate_tasks.py`를 사용합니다. `valid
 - 60개 정답 경로 실행 성공 및 완료 후 조회에도 성공 유지
 - 정답 경로의 모든 부분 경로 780개, 인접 순서 교환 120개에서 우회 성공 없음
 - 기존 장바구니/일정 도구를 통한 우회 차단, 다른 후보·옵션의 잘못된 완료 거부
+- 회복 두 분기의 공통 checkpoint·원래 질문·실제 오류 관측 기록 일치
+- 잘못된 추가 결과를 남기면 실패, 삭제를 먼저/나중에 해도 성공
+- 복구 경로의 부분 생략 1,620개에서 우회 성공 없음, 정상/오류 정답 재생 120회
 
-이 검사는 정답 부분 경로와 리소스 의존성을 검사합니다. 임의의 모든 도구 인자·행동열을 전수 탐색한 검사는 아닙니다. JSON과 시나리오 정의의 일치는 Windows에서 `python scripts\build_execution_tasks.py --check`, WSL/macOS에서 `python scripts/build_execution_tasks.py --check`로 확인합니다. 모델 없이 정답을 재생하는 검사는 모델의 실제 수행 능력 검증과 구분합니다.
+이 검사는 정답 부분 경로와 리소스 의존성을 검사합니다. 임의의 모든 도구 인자·행동열을 전수 탐색한 검사는 아닙니다. 생성기 일치는 `python scripts/build_execution_tasks.py --check`와 `python scripts/build_recovery_tasks.py --check`로 확인합니다. 이 슬래시 경로는 Windows CMD/PowerShell·WSL·macOS에서 모두 사용할 수 있습니다.
 
 ### 2. llama.cpp 준비
 
@@ -489,8 +494,9 @@ SMOKE TEST PASSED
 - 오류 상태 주입
 - Agent tool call 실행
 - 최종 상태 채점
-- free·normal_restart·recovery 조건
+- free·normal_restart·error_restart 조건
 - 새 execution 60개 전체의 정답 실행과 필수 호출 수
+- 회복 60개 × 정상/오류 두 분기의 정답 실행과 추가 비용 지표
 
 ## 모델 생성 및 manifest 기록
 
@@ -551,145 +557,97 @@ Windows, WSL, macOS에서 명령어 형식은 동일합니다. `llama` 명령이
 
 ## 6. 실제 모델로 조건 실행
 
-서버를 실행한 상태에서 별도의 터미널을 열고 다음을 실행합니다.
-
-### Windows CMD / PowerShell
+서버 실행 후 별도 터미널에서 실행합니다. 아래 슬래시 경로는 Windows CMD/PowerShell·WSL·macOS 공통입니다. 예시는 self-Q4이며, 실제 FP16·Q8·Q4 모델을 서버에서 교체할 때 라벨·모델 경로·서버 PID도 맞춥니다.
 
 ```text
-python scripts\run_experiment.py --model-label Q8 --condition free --base-url http://127.0.0.1:18080
+python scripts/run_experiment.py --model-label self-Q4 --condition free --task-type execution --base-url http://127.0.0.1:18080
+python scripts/run_experiment.py --model-label self-Q4 --condition normal_restart --task-type recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
+python scripts/run_experiment.py --model-label self-Q4 --condition error_restart --task-type recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
 ```
 
-### WSL / macOS
+モデル hash와 메모리를 기록하려면 세 명령 모두에 실제 `--model-path models/모델파일.gguf --server-pid 실제PID`를 추가합니다. 처음 확인할 때는 `--limit 1`을 사용합니다.
 
-```bash
-python scripts/run_experiment.py --model-label Q8 --condition free --base-url http://127.0.0.1:18080
-```
+`free`는 execution 60개, `normal_restart`와 `error_restart`는 같은 recovery 60개를 각각 선택합니다. `--condition recovery`를 입력해도 `error_restart`로 기록됩니다. 구버전 execution checkpoint 진단은 `--condition normal_restart --task-type execution`으로 명시해야 하며 회복 비교에는 포함되지 않습니다.
 
-`free`는 정상 수행 task 60개를 실행하고, `recovery`는 별도 회복 task 60개를 실행합니다.
+세 정밀도에서 task·프롬프트·도구·seed·context size·thinking 설정·llama.cpp 버전·장비·호출 예산을 같게 유지합니다. 서버의 완전한 설정 수집, 워밍업, GPU VRAM, resume/반복 번호 지원은 후속 보완 대상입니다. 현재 client의 temperature/max_tokens/seed/timeout 값은 metadata의 inference_settings에 기록되지만 CLI로 변경하는 기능은 아직 없습니다.
+
+## 7. 회복 실험과 집계
+
+### 공통 오류와 두 분기
+
+오류 유형은 `extra_saved_record` 하나입니다. 두 분기 모두 공통 checkpoint 자료로 오래된 draft 하나를 가지며, 오류 분기에서만 이 draft를 확정한 실제 호출과 반환값이 대화 기록에 추가됩니다. 이 결과는 요청 조건과 다른 후보·옵션이며 별도의 요청 ID로 저장됩니다.
+
+원래 질문의 ‘저장된 결과는 요청에 맞는 한 개만 남겨줘’ 조건을 그대로 사용합니다. 새로운 회복 질문이나 정답 지시는 제공하지 않습니다. 모델은 기록에서 추가 저장 결과를 확인하고 `discard_saved_result`로 삭제해야 합니다. 원래 정답을 저장해도 잘못된 추가 기록이 남으면 실패합니다. 삭제는 작업 전이나 후에 해도 됩니다.
+
+정상·오류 분기는 원래 질문·기본 환경·정상 작업 기록·도구·최종 목표·호출 예산을 공유합니다. `checkpoint_state_hash`는 주입 전 공통 상태, `initial_state_hash`는 각 분기의 재개 상태입니다. 오류 분기에는 추가 관측과 잘못된 저장 상태가 함께 주어지며, 이 조건 묶음의 영향을 측정합니다. 전체 과거 세션을 자연스럽게 생성한 데이터는 아닙니다.
+
+| Horizon 표기 | 정상 최소 호출 | 복구 최소 호출 |
+|---|---:|---:|
+| 1 | 1 | 2 |
+| 3 | 3 | 4 |
+| 5 | 5 | 6 |
+
+horizon은 정상 작업에 남은 필수 단계이며, 복구에는 삭제 1회가 더 필요합니다. `normal_remaining_calls`와 `recovery_min_calls`를 따로 기록합니다.
+
+`--recovery-budget 3`이면 두 분기 모두 horizon + 3이라는 같은 응답 턴 상한을 사용합니다. 현재 구현에서는 도구 호출뿐 아니라 종료 응답·잘못된 형식의 응답도 한 턴을 사용합니다. h5는 두 분기 모두 최대 8턴이며, 정상 정답은 5호출+종료, 회복 정답은 6호출+종료입니다. `--max-calls`를 지정하면 두 분기에 같은 고정 상한을 전달해야 합니다. 오류 분기에만 최소 복구 길이 기준으로 예산을 늘리면 안 됩니다.
+
+미리 제공한 호출과 오류 주입 호출은 새 모델 호출·오류 횟수·실행시간·생성 토큰에 포함하지 않습니다.
+
+### 결과 비교
+
+실행 결과는 `results/` 아래에 JSONL로 저장됩니다. 실제 생성된 파일명으로 아래 예시를 바꿉니다.
 
 ```text
---condition recovery
+python scripts/analyze.py results/self-Q4_normal_restart_실행시각.jsonl results/self-Q4_error_restart_실행시각.jsonl --output results/recovery_summary.json --csv-output results/recovery_summary.csv --plot-dir results/plots
 ```
 
-정상 중간 상태에서 재개하는 진단 조건도 필요할 때 사용할 수 있습니다.
+`recovery_comparison`은 같은 회복 fixture의 정상/오류 결과만 짝지어 다음을 계산합니다.
+
+- `normal_restart_success_rate`: 공통 정상 checkpoint에서의 완료율
+- `error_restart_success_rate`: 오류를 받은 뒤의 최종 완료율
+- `recovery_penalty`: 동일한 정상/오류 쌍의 성공률 차이
+- `mean_extra_calls_over_normal`: 정상 최소 호출보다 얼마나 더 사용했는지
+- `mean_extra_calls_over_oracle`: 해당 오류의 최소 복구 호출보다 얼마나 더 사용했는지
+
+추가 호출 평균은 완료한 오류 실행에 대해서만 계산합니다. 실패 실행이 빨리 끝났다고 효율적인 회복으로 해석하지 않습니다. 서로 다른 장비·모델 hash·task hash·seed·수집된 client 설정·예산은 같은 비교 쌍으로 합치지 않습니다. 동일한 실행을 중복 입력하면 오류로 알리며, 짝이 없는 결과와 runtime 오류가 있는 쌍은 진단 정보로 남깁니다. 기록되지 않은 서버 설정 차이까지 자동 검출하는 것은 아닙니다.
+
+`--csv-output results/recovery_summary.csv`를 지정하면 조건별 표와 함께 `results/recovery_summary_paired.csv`에 대응 비교 표를 저장합니다. 회복률 그림은 `error_restart` 결과를 사용합니다. 일반 표·그림은 같은 모델 라벨·프로토콜에 다른 수집 설정이 들어오면 분석을 중단합니다. 장비나 seed가 다른 결과는 별도로 분석하거나 라벨을 구분합니다. 누락된 metadata나 미수집 서버 설정까지 자동 검출할 수는 없습니다.
+
+execution의 `free` 결과는 전체 수행 분석용입니다. 이 성공률에서 회복 성공률을 빼는 구버전 `recovery_gap`은 사용하지 않습니다. 구버전 결과와 새 결과를 섞지 말고 별도 폴더에 보관합니다.
+
+### 회복·오류 지표 읽기
+
+- `recovery_success`: 잘못된 기록 제거와 원래 목표 달성을 모두 완료했는지
+- `recovery_error_resolved`: 추가된 잘못된 기록을 제거했는지. 이것만 true이고 최종 과제는 실패할 수 있음
+- `recovery_resolution_step`: 잘못된 기록이 처음 제거된 재개 이후 응답 단계
+- `recovery_completion_step`: 목표 상태에 처음 도달한 응답 단계. 이후 다시 망가뜨리면 최종 성공은 false
+- `recovery_error_count`: 재개 후 도구/인자 오류·잘못된 확정/삭제·미완료 종료를 낸 응답 단계 수
+- `recovery_first_error_step`: 주입된 오류가 아니라 모델이 재개 후 새로 낸 첫 오류 단계
+- `tool_call_count`: 재개 후 모델이 요청한 도구 호출 수
+- `extra_calls_over_normal`, `extra_calls_over_oracle`: 정상 기준/분기별 최소 호출 기준의 추가 비용
+- `n_runtime_errors`: 예외로 종료되어 행동 성공률에서 제외된 실행 수
+
+v2의 선택적 조회와 유효한 다른 행동 순서는 오류가 아닙니다. `next_action_accuracy`는 v2에서 사용하지 않아 null입니다. runtime 예외에는 모델 출력 파싱 문제와 통신 문제가 아직 함께 들어갈 수 있으므로 제외된 로그를 따로 검토해야 합니다.
+
+## 8. 연구용 task 구성과 검증
 
 ```text
---condition normal_restart
+20개 기본 시나리오 × 정상 horizon 1·3·5 = execution 60개
+각 execution과 대응하는 recovery fixture = recovery 60개
+모델당 free 60회 + normal_restart 60회 + error_restart 60회 = 180회
 ```
 
-예를 들어 Q4의 회복 실험은 다음과 같습니다.
+각 task에는 원래 질문·환경 fixture·정답 경로·정상 제공 기록·최종 성공 조건이 있습니다. 회복 task에는 오류 주입 호출, 별도 복구 정답 경로, 정상/복구 최소 호출도 있습니다.
+
+`gold_actions`는 정상 분기의 남은 호출이고, `recovery_actions`는 잘못된 기록 삭제가 포함된 복구 경로입니다. `initial_actions`는 미리 제공할 정상 기록입니다. 회복 task의 `checkpoint_step=0`은 그 남은 경로에서 추가 재생하지 않는다는 뜻입니다. 실제 전체 작업 흐름의 checkpoint 깊이는 `resume_workflow_step=len(initial_actions)`이며 h1·h3·h5에서 각각 4·2·0입니다.
 
 ```text
-python scripts\run_experiment.py --model-label Q4 --condition recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
+python scripts/build_execution_tasks.py --check
+python scripts/build_recovery_tasks.py --check
+python scripts/validate_tasks.py
+python scripts/smoke_test.py
 ```
 
-FP16·Q8·Q4를 비교할 때는 다음 항목을 동일하게 유지해야 합니다.
+검증에는 60개 execution 재생, 60개 회복 정상 분기와 60개 오류 분기의 재생, 오류 관측·공통 checkpoint 검사, 정답만 저장하고 삭제하지 않는 실패 사례, 순서가 다른 합법적인 복구, 부분 경로 우회 검사가 포함됩니다. 실제 모델 테스트와 구분합니다.
 
-- task 파일
-- prompt와 tool 정의
-- seed와 temperature
-- context size
-- Agent loop
-- llama.cpp 버전
-
-## 7. 결과 집계
-
-실험 결과는 `results/` 아래 JSONL 파일로 저장됩니다.
-
-### Windows CMD / PowerShell
-
-```text
-python scripts\analyze.py results\Q8_free_실행시각.jsonl
-```
-
-### WSL / macOS
-
-```bash
-python scripts/analyze.py results/Q8_free_실행시각.jsonl
-```
-
-### 회복률 조사 방법
-
-회복률은 `recovery` 조건에서 처음부터 같은 오류 상태를 받은 뒤, Agent가 제한된 호출 횟수 안에 정확한 최종 상태를 만드는 비율입니다. 단순히 tool을 한 번 호출했는지가 아니라 최종 상태가 `success_condition`과 일치하는지를 기준으로 합니다.
-
-각 모델에서 `free`와 `recovery`를 같은 seed·서버 설정으로 실행합니다. `free`는 `execution` task를, `recovery`는 대응하는 `recovery` task를 자동으로 선택합니다.
-
-#### Windows CMD / PowerShell
-
-```text
-python scripts\run_experiment.py --model-label Q4 --condition free --base-url http://127.0.0.1:18080
-python scripts\run_experiment.py --model-label Q4 --condition recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
-python scripts\analyze.py results\Q4_free_실행시각.jsonl results\Q4_recovery_실행시각.jsonl
-```
-
-#### WSL / macOS
-
-```bash
-python scripts/run_experiment.py --model-label Q4 --condition free --base-url http://127.0.0.1:18080
-python scripts/run_experiment.py --model-label Q4 --condition recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
-python scripts/analyze.py results/Q4_free_실행시각.jsonl results/Q4_recovery_실행시각.jsonl
-```
-
-FP16·Q8·Q4 각각에 대해 같은 두 조건을 실행한 뒤, 결과 파일을 한 번에 분석할 수도 있습니다.
-
-```text
-python scripts\analyze.py results\FP16_free_실행시각.jsonl results\FP16_recovery_실행시각.jsonl results\Q8_free_실행시각.jsonl results\Q8_recovery_실행시각.jsonl results\Q4_free_실행시각.jsonl results\Q4_recovery_실행시각.jsonl
-```
-
-구버전 분석 코드는 `recovery_comparison`에 다음 값을 출력합니다. 새 execution-v2와 구버전 recovery를 함께 분석한 `recovery_gap`에는 의미가 없으므로 사용하지 않습니다. 같은 checkpoint에서의 정상/오류 비교로 회복 실험을 수정한 뒤 해당 집계도 바꿀 예정입니다.
-
-- `normal_success_rate`: 정상 초기 상태에서의 완료율
-- `recovery_rate`: 같은 오류 상태에서의 회복 완료율
-- `recovery_gap`: `normal_success_rate - recovery_rate`
-- `mean_extra_calls`: 회복에 추가로 사용한 평균 tool call 수
-
-`recovery` 실행에서는 회복 task의 `recovery_query`가 사용됩니다. 이 질문에는 이미 발생한 오류 상황과 복구해야 할 목표 상태가 명시되어 있습니다. 다만 정확히 어떤 tool을 어떤 순서로 호출할지는 알려주지 않으므로, 모델이 상태를 확인하고 스스로 복구해야 합니다. 모든 정밀도 조건에는 같은 오류 설명과 같은 recovery query가 제공됩니다.
-
-`--recovery-budget 3`은 회복 task의 필수 tool call 수에 추가로 최대 3회의 호출을 허용한다는 뜻입니다. 예를 들어 horizon 5 회복 task는 기본 허용량 5회 + 회복 예산 3회 = 8회입니다. 모든 모델과 task에 같은 회복 예산을 사용해야 합니다. `--max-calls`를 지정하면 이 자동 계산 대신 고정된 호출 상한을 사용합니다.
-
-주요 집계 항목은 다음과 같습니다.
-
-- 전체 성공률
-- free 조건의 자연 오류율
-- 최초 오류 위치
-- normal_restart의 다음 행동 정확도(선택적 진단 조건)
-- recovery의 회복률
-- 회복에 사용된 추가 호출 수
-- recovery 오류 총 횟수(`recovery_error_count`)
-- recovery tool 오류·invalid action 횟수
-- recovery 최초 오류 단계(`recovery_first_error_step`)
-- 성공 상태에 처음 도달한 단계(`recovery_completion_step`)
-- 실행 시간과 생성 토큰 수
-- 선택적으로 최대 RAM 사용량
-
-## 8. 연구용 task 구성
-
-현재 `tasks/tasks.json`에 연구용 task 120개가 이미 포함되어 있습니다.
-
-```text
-20개 기본 시나리오 × horizon 1·3·5 × 2(task 유형) = 120개 task
-```
-
-ID·horizon·domain상 대응 관계는 검사하지만, 현재 새 정상 수행 task와 구버전 회복 task는 의미상 대응하는 쌍이 아닙니다. 회복 task 재설계가 필요합니다.
-
-- `execution`: 오류가 없는 정상 시작 상태와 제공된 조회/준비 기록에서 남은 1·3·5단계를 수행
-- `recovery`: 처음부터 동일한 오류 상태를 주고 오류를 복구
-
-각 task에는 다음 정보가 포함되어 있습니다.
-
-- 사용자 질문
-- 정답 tool trajectory
-- 필수 horizon
-- checkpoint 단계
-- 오류 주입 방식
-- 오류 상황 설명
-- 회복 전용 질문
-- 최종 성공 조건
-
-execution-v2에는 `schema_version`, `execution_spec`(요청과 후보 환경), `initial_actions`(미리 제공할 정상 호출 기록)가 추가됩니다. `gold_actions`는 모델이 앞으로 수행해야 할 호출만 담습니다. `checkpoint_step`은 이 남은 경로 안에서 선택적으로 `normal_restart`를 시험할 지점이며, 미리 제공된 `initial_actions`의 개수와는 다릅니다. 실행 기록에는 시작 대화·상태·제공된 호출·스키마 버전·최종 성공 조건이 남습니다.
-
-회복 task의 `checkpoint_step`은 0이며, 오류가 모델의 첫 호출 전에 주입됩니다. 따라서 정상 수행의 자연 오류율과 회복 수행의 회복률을 서로 다른 실험으로 측정할 수 있습니다.
-
-horizon별 회복 경로는 다음처럼 구성했습니다. horizon 1은 즉시 교정 또는 stale 결과 재조회 1회, horizon 3은 상태 확인·오류 제거·목표 상태 적용, horizon 5는 추가 정보 조회를 포함한 뒤 오류 제거·목표 상태 적용의 순서입니다. `replace_cart_item`과 `replace_event`는 한 번의 교정 호출을 검증하기 위한 mock tool입니다.
-
-BFCL은 내부 task가 안정화된 뒤 외부 검증 데이터로 별도 추가합니다. 처음부터 BFCL 실행 코드를 섞지 않는 이유는 핵심 실험의 상태·오류·회복 흐름을 단순하게 유지하기 위해서입니다.
+[정상 시나리오](tasks/EXECUTION_TASKS.md), [회복 설계·목록](tasks/RECOVERY_TASKS.md)을 함께 확인합니다. 20개 기본 시나리오의 대응 조건을 독립 표본 60개처럼 분석하지 않습니다. 이번 회복 조건은 ‘잘못된 요청의 결과가 추가 저장된 오류’ 하나이며 모든 오류 유형에 일반화하지 않습니다. BFCL은 내부 실험이 안정화된 뒤 외부 검증용으로 별도 추가합니다.

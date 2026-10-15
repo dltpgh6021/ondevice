@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.tasks import load_tasks, validate_task_set
 from src.execution_validation import validate_execution_tasks
+from src.recovery_validation import validate_recovery_tasks
 
 
 def main() -> int:
@@ -29,10 +30,11 @@ def main() -> int:
         require_pairs=True,
     )
     execution_summary = validate_execution_tasks(tasks)
+    recovery_summary = validate_recovery_tasks(tasks)
     print(json.dumps({"valid": True, **summary,
-                      "pairing_scope": "IDs/domain/horizon only; legacy recovery has not been realigned",
+                      "pairing_scope": "same original query/goal/clean prefix and matched recovery checkpoints",
                       "execution_semantics": execution_summary,
-                      "recovery_semantics": "pending redesign; not approved for final experiments"},
+                      "recovery_semantics": recovery_summary},
                      ensure_ascii=False, indent=2))
     return 0
 

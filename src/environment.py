@@ -264,7 +264,7 @@ class MockEnvironment:
 
 def environment_for_task(task: Task) -> MockEnvironment:
     """Keep legacy recovery fixtures separate from the redesigned execution API."""
-    if task.schema_version == "execution-v2":
+    if task.schema_version in {"execution-v2", "recovery-v2"}:
         from .execution_environment import ExecutionEnvironment
 
         return ExecutionEnvironment(task.execution_spec or {})

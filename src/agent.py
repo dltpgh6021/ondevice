@@ -47,8 +47,8 @@ def run_agent(
     reference_actions = task.gold_actions
     if condition == "normal_restart":
         reference_actions = task.gold_actions[task.checkpoint_step :]
-    elif condition == "recovery":
-        reference_actions = []
+    elif condition in {"recovery", "error_restart"}:
+        reference_actions = task.recovery_actions or []
 
     trace: dict[str, Any] = {
         "task_id": task.task_id,
@@ -65,7 +65,12 @@ def run_agent(
         "runtime_error": None,
         "finished": False,
         "final_answer": "",
+        "schema_version": task.schema_version,
+        "pair_id": task.base_id if task.task_type == "recovery" else None,
+        "normal_remaining_calls": task.normal_remaining_calls,
+        "recovery_min_calls": task.recovery_min_calls,
     }
+    trace.update(copy.deepcopy(getattr(environment, "preparation_metadata", {})))
 
     start_time = time.perf_counter()
     total_prompt_tokens = 0
@@ -95,6 +100,8 @@ def run_agent(
             event["finish"] = True
             trace["finished"] = True
             trace["final_answer"] = answer
+            if task.schema_version in {"execution-v2", "recovery-v2"} and not environment.check_success(task.success_condition):
+                event["semantic_error"] = "premature_finish"
             trace["events"].append(event)
             break
 
@@ -123,12 +130,19 @@ def run_agent(
         )
         event["tool_result"] = result
         event["state_hash_after"] = environment.state_hash()
+        if task.schema_version == "recovery-v2" and condition in {"error_restart", "recovery"}:
+            injected_ids = [item["result"]["saved_result"]["request_id"] for item in trace.get("injected_actions", [])]
+            event["injected_error_present_after"] = any(key in environment.state["completed_requests"] for key in injected_ids)
         try:
             event["success_after_action"] = environment.check_success(task.success_condition)
         except Exception:
             event["success_after_action"] = False
         if not result.get("ok", False):
             event["tool_error"] = result.get("error", "tool_error")
+        elif hasattr(environment, "assess_action_result"):
+            semantic_error = environment.assess_action_result(result)
+            if semantic_error:
+                event["semantic_error"] = semantic_error
         trace["events"].append(event)
 
     trace["elapsed_ms"] = round((time.perf_counter() - start_time) * 1000, 3)
