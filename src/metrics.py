@@ -25,6 +25,10 @@ def _same_action(event: dict[str, Any], expected: dict[str, Any]) -> bool:
 
 
 def _final_state_success(state: dict[str, Any], condition: dict[str, Any]) -> bool:
+    if "completed_request_equals" in condition:
+        from .execution_environment import completion_condition_matches
+
+        return completion_condition_matches(state, condition)
     if "cart_contains" in condition:
         return condition["cart_contains"] in state.get("cart", [])
     if "cart_equals" in condition:

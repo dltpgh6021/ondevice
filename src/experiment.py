@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent import run_agent
-from .environment import MockEnvironment
+from .environment import environment_for_task
 from .metrics import score_trace
 from .tasks import Task, stable_hash
 
@@ -130,7 +130,7 @@ def run_batch(
     records: list[dict[str, Any]] = []
     with output.open("w", encoding="utf-8") as handle:
         for task in tasks:
-            environment = MockEnvironment()
+            environment = environment_for_task(task)
             required_calls = task.horizon
             if condition != "free":
                 required_calls = max(0, task.horizon - task.checkpoint_step)
@@ -162,12 +162,15 @@ def run_batch(
                     "base_id": task.base_id,
                     "domain": task.domain,
                     "task_type": task.task_type,
+                    "schema_version": task.schema_version,
+                    "initial_actions": task.initial_actions,
                     "horizon": task.horizon,
                     "checkpoint_step": task.checkpoint_step,
                     "query": task.query,
                     "recovery_query": task.recovery_query,
                     "error_description": task.error_description,
                     "error_injection": task.error_injection,
+                    "success_condition": task.success_condition,
                 },
                 "trace": trace,
                 "score": score,

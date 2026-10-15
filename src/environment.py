@@ -261,3 +261,12 @@ class MockEnvironment:
             return (self.state["last_result"] or {}).get(spec["field"]) == spec["value"]
         raise ValueError(f"unsupported success condition: {condition}")
 
+
+def environment_for_task(task: Task) -> MockEnvironment:
+    """Keep legacy recovery fixtures separate from the redesigned execution API."""
+    if task.schema_version == "execution-v2":
+        from .execution_environment import ExecutionEnvironment
+
+        return ExecutionEnvironment(task.execution_spec or {})
+    return MockEnvironment()
+

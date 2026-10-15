@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.tasks import load_tasks, validate_task_set
+from src.execution_validation import validate_execution_tasks
 
 
 def main() -> int:
@@ -27,7 +28,12 @@ def main() -> int:
         expected_per_type_horizon=args.expected_per_type_horizon,
         require_pairs=True,
     )
-    print(json.dumps({"valid": True, **summary}, ensure_ascii=False, indent=2))
+    execution_summary = validate_execution_tasks(tasks)
+    print(json.dumps({"valid": True, **summary,
+                      "pairing_scope": "IDs/domain/horizon only; legacy recovery has not been realigned",
+                      "execution_semantics": execution_summary,
+                      "recovery_semantics": "pending redesign; not approved for final experiments"},
+                     ensure_ascii=False, indent=2))
     return 0
 
 

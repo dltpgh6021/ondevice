@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.agent import run_agent
 from src.client import ScriptedClient
-from src.environment import MockEnvironment
+from src.environment import environment_for_task
 from src.metrics import score_trace
 from src.tasks import load_tasks
 
@@ -28,17 +28,10 @@ def main() -> int:
     execution_task = next(task for task in tasks if task.task_id == "shopping_001_h3")
     recovery_task = next(task for task in tasks if task.task_id == "recovery_shopping_001_h3")
     scripted_actions = {
-        "free": [
-            tool("get_budget", {}),
-            tool("search_product", {"category": "keyboard"}),
-            tool("add_to_cart", {"product_id": "keyboard_02"}),
-            finish(),
-        ],
-        "normal_restart": [
-            tool("search_product", {"category": "keyboard"}),
-            tool("add_to_cart", {"product_id": "keyboard_02"}),
-            finish(),
-        ],
+        "free": [tool(action["tool"], action.get("arguments", {}))
+                 for action in execution_task.gold_actions] + [finish()],
+        "normal_restart": [tool(action["tool"], action.get("arguments", {}))
+                           for action in execution_task.gold_actions[execution_task.checkpoint_step:]] + [finish()],
         "recovery": [
             tool("inspect_state", {}),
             tool("remove_from_cart", {"product_id": "keyboard_99"}),
@@ -56,7 +49,7 @@ def main() -> int:
     output_dir.mkdir(exist_ok=True)
     all_scores = []
     for condition, actions in scripted_actions.items():
-        environment = MockEnvironment()
+        environment = environment_for_task(task_by_condition[condition])
         trace = run_agent(
             task_by_condition[condition],
             ScriptedClient(actions),
@@ -75,6 +68,19 @@ def main() -> int:
     if not all(score["strict_success"] for score in all_scores):
         print("SMOKE TEST FAILED", file=sys.stderr)
         return 1
+    execution_count = 0
+    for task in tasks:
+        if task.task_type != "execution":
+            continue
+        actions = [tool(action["tool"], action.get("arguments", {})) for action in task.gold_actions] + [finish()]
+        trace = run_agent(task, ScriptedClient(actions), environment_for_task(task),
+                          condition="free", max_calls=task.horizon + 1)
+        score = score_trace(task, trace)
+        if not score["strict_success"] or score["natural_error"] or score["tool_call_count"] != task.horizon:
+            print(f"SMOKE TEST FAILED: {task.task_id}", file=sys.stderr)
+            return 1
+        execution_count += 1
+    print(f"Execution scripted replay: {execution_count}/{execution_count} passed (not an LLM quality test)")
     print("SMOKE TEST PASSED")
     return 0
 

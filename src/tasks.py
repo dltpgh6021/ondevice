@@ -24,6 +24,9 @@ class Task:
     checkpoint_step: int
     error_injection: dict[str, Any] | None
     success_condition: dict[str, Any]
+    schema_version: str = "legacy-v1"
+    initial_actions: list[dict[str, Any]] | None = None
+    execution_spec: dict[str, Any] | None = None
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Task":
@@ -40,6 +43,9 @@ class Task:
             checkpoint_step=int(data.get("checkpoint_step", 0)),
             error_injection=data.get("error_injection"),
             success_condition=dict(data["success_condition"]),
+            schema_version=str(data.get("schema_version", "legacy-v1")),
+            initial_actions=list(data.get("initial_actions", [])),
+            execution_spec=data.get("execution_spec"),
         )
         validate_task(task)
         return task
@@ -59,6 +65,13 @@ def validate_task(task: Task) -> None:
         raise ValueError(f"{task.task_id}: invalid checkpoint_step")
     if not task.success_condition:
         raise ValueError(f"{task.task_id}: success_condition is required")
+    if task.schema_version == "execution-v2":
+        if task.task_type != "execution" or not task.execution_spec:
+            raise ValueError(f"{task.task_id}: execution-v2 requires an execution fixture")
+        if task.error_injection or task.recovery_query:
+            raise ValueError(f"{task.task_id}: execution task must not inject an error")
+        if len(task.initial_actions or []) + task.horizon != 5:
+            raise ValueError(f"{task.task_id}: initial context and remaining horizon must total 5")
     if task.task_type == "recovery" and not task.error_injection:
         raise ValueError(f"{task.task_id}: recovery task requires error_injection")
     for index, action in enumerate(task.gold_actions):
