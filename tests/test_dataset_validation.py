@@ -103,7 +103,11 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         output = Path(self.scratch.name) / "offline-result.jsonl"
         arguments = ["run_experiment.py", "--tasks", str(self.task_path), "--output", str(output),
                      "--model-label", "scripted-not-qwen", "--condition", "free", "--limit", "1"]
-        with patch.object(sys, "argv", arguments), patch.object(run_experiment, "LlamaCppClient", return_value=model), redirect_stdout(StringIO()):
+        preparation = {"inference_settings": {"temperature": 0.0, "seed": 42, "max_tokens": 512,
+                                               "timeout_seconds": 120.0},
+                       "preparation_protocol": "fixed-inference-warmup-v1"}
+        with patch.object(sys, "argv", arguments), patch.object(run_experiment, "LlamaCppClient", return_value=model), \
+                patch.object(run_experiment, "prepare_run", return_value=preparation), redirect_stdout(StringIO()):
             status = run_experiment.main()
         self.assertEqual(status, 0)
         record = json.loads(output.read_text(encoding="utf-8"))

@@ -131,7 +131,7 @@ def run_batch(
     records: list[dict[str, Any]] = []
     metadata = {**metadata, "metrics_version": METRICS_VERSION,
                 "agent_policy_version": AGENT_POLICY_VERSION}
-    with output.open("w", encoding="utf-8") as handle:
+    with output.open("x", encoding="utf-8") as handle:
         for task in tasks:
             environment = environment_for_task(task)
             required_calls = task.horizon

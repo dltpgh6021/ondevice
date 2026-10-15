@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
+import math
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.client import LlamaCppClient
+from src.client import InfrastructureError, LlamaCppClient
 from src.experiment import collect_metadata, run_batch
 from src.metrics import aggregate
 from src.dataset_validation import DatasetValidationError, load_validated_tasks
+from src.run_preparation import PreparationError, prepare_run
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,6 +41,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--max-tokens", type=int, default=512, help="Per-response token limit, identical across all conditions")
+    parser.add_argument("--timeout-seconds", type=float, default=120.0)
+    parser.add_argument("--warmup-requests", type=int, default=2, help="Held-out warm-up requests before measured tasks; must be at least 1")
+    parser.add_argument("--expected-context-size", type=int, default=8192, help="Required per-slot context from /props; one server slot is required")
+    parser.add_argument("--settings-lock", default=str(ROOT / "results" / "experiment_settings.json"),
+                        help="Create once, then require the same model-independent settings for every precision and condition")
     parser.add_argument("--max-calls", type=int, default=None, help="Fixed model response-turn cap, including finish/invalid responses; otherwise normal horizon plus shared extra turns")
     parser.add_argument("--recovery-budget", type=int, default=3, help="Shared extra response turns above normal horizon, identical in both recovery branches (default: 3)")
     parser.add_argument("--limit", type=int, default=None)
@@ -51,8 +60,16 @@ def main() -> int:
         args.condition = "error_restart"
     if args.ram_sample_interval_ms <= 0:
         raise SystemExit("--ram-sample-interval-ms must be greater than zero")
+    if (not math.isfinite(args.temperature) or args.temperature < 0 or args.max_tokens < 1
+            or not math.isfinite(args.timeout_seconds) or args.timeout_seconds <= 0
+            or not 0 <= args.seed < 2 ** 32 - 1 or args.warmup_requests < 1
+            or args.expected_context_size < 1 or (args.limit is not None and args.limit < 1)):
+        raise SystemExit("Invalid inference settings: finite temperature >= 0, max-tokens/context/timeout/limit > 0, "
+                         "warmup >= 1, and seed 0..4294967294 are required.")
     if args.output and Path(args.output).resolve() == Path(args.tasks).resolve():
         raise SystemExit("--output must not overwrite the input dataset")
+    if Path(args.settings_lock).resolve() == Path(args.tasks).resolve():
+        raise SystemExit("--settings-lock must not be the input dataset")
     try:
         tasks, validation = load_validated_tasks(args.tasks)
     except DatasetValidationError as exc:
@@ -72,8 +89,17 @@ def main() -> int:
     if any((args.condition == "free" and task.task_type != "execution") or
            (args.condition == "error_restart" and task.schema_version != "recovery-v2") for task in tasks):
         raise SystemExit("free requires execution tasks; error_restart requires recovery-v2 tasks.")
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     output = Path(args.output or ROOT / "results" / f"{args.model_label}_{args.condition}_{timestamp}.jsonl")
+    report_path = output.with_suffix(".preflight.json")
+    lock_path = Path(args.settings_lock)
+    if (output.resolve() == lock_path.resolve() or report_path.resolve() == lock_path.resolve()
+            or report_path.resolve() == Path(args.tasks).resolve()):
+        raise SystemExit("Task output, preflight report, settings lock and input dataset must be different files.")
+    if output.exists() or report_path.exists():
+        raise SystemExit("Output/preflight report already exists. Choose a new --output; existing files are never overwritten.")
+    if args.model_path and not Path(args.model_path).is_file():
+        raise SystemExit("--model-path must point to an existing local model file")
     metadata = collect_metadata(
         model_label=args.model_label,
         model_path=args.model_path,
@@ -90,9 +116,20 @@ def main() -> int:
                      "dataset_sha256": validation["dataset_sha256"],
                      "tasks_sha256": validation["tasks_file_sha256"],
                      "dataset_validation": {"valid": True, "validator_version": validation["validator_version"]}})
-    client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed)
-    metadata["inference_settings"] = {"temperature": client.temperature, "seed": client.seed,
-                                       "max_tokens": client.max_tokens, "timeout_seconds": client.timeout_seconds}
+    client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed, temperature=args.temperature,
+                            max_tokens=args.max_tokens, timeout_seconds=args.timeout_seconds)
+    metadata["api_model"] = args.api_model
+    print(f"Checking server/settings lock, then warming up with {args.warmup_requests} held-out requests...", file=sys.stderr, flush=True)
+    try:
+        metadata.update(prepare_run(
+            client, expected_context_size=args.expected_context_size, warmup_requests=args.warmup_requests,
+            settings_lock_path=lock_path, report_path=report_path,
+            hardware={field: metadata[field] for field in ("hostname", "platform", "processor", "machine")},
+        ))
+    except (PreparationError, InfrastructureError, OSError) as exc:
+        print(json.dumps({"ready": False, "error": str(exc), "preflight_report": str(report_path),
+                          "task_results_created": False}, ensure_ascii=False, indent=2), file=sys.stderr)
+        return 1
     records = run_batch(
         tasks,
         client,

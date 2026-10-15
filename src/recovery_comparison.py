@@ -13,6 +13,7 @@ CONFIG_FIELDS = (
     "seed", "tasks_sha256", "inference_settings", "shared_extra_action_turns", "max_calls",
     "dataset_language", "dataset_version", "dataset_sha256",
     "metrics_version", "agent_policy_version",
+    "preparation_protocol", "server_configuration_sha256", "warmup_settings", "settings_lock_sha256",
 )
 
 VERSION_FIELDS = {"metrics_version", "agent_policy_version"}

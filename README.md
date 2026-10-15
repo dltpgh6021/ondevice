@@ -2,7 +2,7 @@
 
 양자화가 장기 Agent의 수행 안정성에 미치는 영향을 비교하는 실험 저장소입니다.
 
-**현재 단계:** execution 60개와 recovery 60개를 v2로 재설계하고 영어 데이터 자동 검증과 회복·오류 지표 v3를 구현했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. 워밍업·서버 설정 고정·VRAM·반복 실행 관리는 여전히 본실험 전에 보완해야 합니다.
+**현재 단계:** execution 60개와 recovery 60개를 v2로 재설계하고 영어 데이터 검증·회복 지표 v3·추론 설정 잠금·자동 워밍업을 구현했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. GPU VRAM과 resume/반복 실행 관리는 아직 별도 보완 대상입니다. 서버에서 자동 확인할 수 있는 설정의 범위는 아래에 명시합니다.
 
 현재 모델 입력은 **영어**, 데이터 버전은 `workflow-en-v1`입니다. 질문·요청 조건 설명·후보 이름·일정 제목·도구 정의·오류 관측을 영어로 통일했습니다. 실제 실험 명령은 전체 데이터셋 자동 검증을 먼저 통과해야 시작합니다. 팀원용 README는 한국어이며, 생성되는 task 카탈로그는 영어입니다.
 
@@ -80,11 +80,13 @@ ondevice/
 ├─ .github/workflows/validate-dataset.yml # GitHub 업로드·PR 시 오프라인 검사
 ├─ tests/test_dataset_validation.py # 잘못된 데이터가 거부되는지 회귀 검사
 ├─ tests/test_behavior_metrics.py # 출력 오류·서버 장애·회복 지표 회귀 검사
+├─ tests/test_run_preparation.py # 설정 잠금·워밍업·서버 점검 회귀 검사
 ├─ tasks/tasks.json
 ├─ src/
 │  ├─ tasks.py          # task 로딩과 검증
 │  ├─ dataset_validation.py # JSON·형식·영어·정보 누락·의미를 묶은 통합 검증
 │  ├─ client.py         # FakeClient와 llama.cpp client
+│  ├─ run_preparation.py # 공통 설정 검사·잠금과 별도 더미 워밍업
 │  ├─ environment.py    # 결정론적 mock tool과 상태 관리
 │  ├─ execution_environment.py # 리소스 의존성이 있는 execution-v2 도구
 │  ├─ execution_validation.py  # 정답·우회 경로·최종 상태 검증
@@ -304,24 +306,24 @@ models/
 reference 모델은 같은 공식 저장소에서 자동으로 받을 수 있습니다. 아래 명령은 한 번에 하나씩 실행하며, 첫 번째 서버를 `Ctrl+C`로 종료한 뒤 다음 모델을 실행합니다. 처음 실행할 때 모델이 로컬 cache에 다운로드됩니다.
 
 ```cmd
-llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q8_0 --host 127.0.0.1 --port 18080 --ctx-size 8192
-llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q4_K_M --host 127.0.0.1 --port 18080 --ctx-size 8192
+llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q8_0 --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
+llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q4_K_M --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
 ```
 
 reference 모델도 hash와 파일 크기를 manifest에 남길 경우, 다운로드된 `.gguf` 파일의 실제 경로를 확인해 `quantize_models.py`의 `--reference-q8`, `--reference-q4` 옵션으로 기록합니다. reference 모델과 cache도 GitHub에는 올리지 않습니다.
 
 ### 4. GPU PC에서 본 실험 실행
 
-서버는 한 번에 한 모델만 실행합니다. 첫 요청은 모델·CUDA kernel warm-up에 사용하고, 비교 결과에서는 warm-up을 제외합니다. 서버를 종료하려면 서버 터미널에서 `Ctrl+C`를 누릅니다.
+서버는 한 번에 한 모델만 실행합니다. 실행 스크립트가 실제 task 전에 별도 더미 요청 2회로 워밍업하고, 이를 과제 시간·토큰·메모리 지표에서 제외합니다. 첫 번째 실제 task를 버리는 방식이 아닙니다. 서버를 종료하려면 서버 터미널에서 `Ctrl+C`를 누릅니다.
 
 ```text
-llama serve -m "C:\path\to\Qwen3-1.7B-f16.gguf" --host 127.0.0.1 --port 18080 --ctx-size 8192
+llama serve -m models/Qwen3-1.7B-f16.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
 ```
 
 다른 터미널에서 먼저 1개 task로 확인합니다.
 
 ```text
-python scripts\run_experiment.py --model-label self-FP16 --condition free --model-path "C:\path\to\Qwen3-1.7B-f16.gguf" --base-url http://127.0.0.1:18080 --limit 1
+python scripts/run_experiment.py --model-label self-FP16 --condition free --model-path models/Qwen3-1.7B-f16.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --timeout-seconds 120 --warmup-requests 2 --expected-context-size 8192 --limit 1
 ```
 
 정상이면 `--limit 1`을 제거해 60개 execution task를 실행합니다. 이후 서버를 종료하고 같은 방식으로 self-Q8, self-Q4, reference-Q8, reference-Q4를 실행합니다. 모든 모델에서 prompt, tool schema, seed, temperature, context size, Agent loop, llama.cpp 버전을 동일하게 유지합니다.
@@ -588,26 +590,53 @@ BFCL은 주 실험을 대체하지 않고 외부 검증용으로 추가하는 �
 Ollama를 사용하지 않고 `llama.cpp`의 서버를 직접 사용합니다. 서버는 별도의 터미널에서 계속 실행해 둡니다.
 
 ```text
-llama serve -hf Qwen/Qwen3-1.7B-GGUF:Q8_0 --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192
+llama serve -m models/Qwen3-1.7B-f16-Q8_0.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
 ```
 
 Windows, WSL, macOS에서 명령어 형식은 동일합니다. `llama` 명령이 인식되지 않으면 llama.cpp가 설치된 경로를 사용하거나 `llama-server` 실행 파일 경로를 확인해야 합니다.
+
+GPU 예시의 `--n-gpu-layers 99`는 가능한 전체 레이어의 GPU 배치를 요청합니다. **FP16까지 같은 배치로 실행할 여유가 있는 장비**를 사용하고 서버 시작 로그에서 실제 배치를 확인합니다. 메모리가 부족하면 세 정밀도 모두 같은 고정 레이어 수로 바꾸거나 더 큰 장비를 사용합니다. CPU 실험은 세 모델 모두 `--n-gpu-layers 0`으로 실행하고 GPU 결과와 분리합니다. 스레드 수 등 추가 실행 옵션도 세 모델에서 동일하게 유지하며, 사용한 서버 명령과 시작 로그를 함께 보관합니다. `--flash-attn off`와 KV cache F16도 이번 비교를 위한 공통 선택이지 최적 속도 설정이라는 뜻은 아닙니다.
+
+### 공통 추론 설정과 자동 워밍업
+
+| 항목 | 기본값 / 정책 |
+|---|---|
+| temperature / seed | `0.0` / `42` |
+| 한 응답의 최대 생성 토큰 / 통신 제한 | `512` / `120초` |
+| thinking | 요청마다 `enable_thinking=false`, `reasoning_effort=none` |
+| 도구 호출 | 한 응답에 하나, `parallel_tool_calls=false` |
+| 샘플러 | `temperature`만 활성화; top-k·top-p·min-p·패널티는 중립값을 명시 |
+| prompt cache 재사용 | `cache_prompt=false` (매 응답에서 재사용하지 않는 측정 조건) |
+| context / 동시 처리 slot | 서버가 보고한 `8192` / `1`을 요구 |
+| 워밍업 | 실행 명령마다 독립 더미 요청 `2회`, 실제 task 정보 미사용 |
+
+temperature·seed·토큰 상한·timeout·워밍업 횟수·기대 context 크기는 실행 인자로 받을 수 있습니다. 기본값을 바꿀 때는 모든 정밀도와 조건에서 동일하게 바꾸고 **별도 실험 시리즈**로 저장합니다. 무작위 seed 값, NaN/무한대, 0회 워밍업 등 잘못된 설정은 서버 요청 전에 거절합니다. Greedy decoding은 비교를 위한 선택이며 Qwen의 최적 정확도 설정이거나 장비 간 완전히 같은 출력을 보장한다는 뜻은 아닙니다.
+
+실행 순서는 `전체 task 검증 → 서버 /props 조회 → 공통 설정 확인 → 더미 워밍업 → 실제 task 측정`입니다. 워밍업의 응답 내용이 틀리거나 모델 출력 형식 오류가 있어도 약한 정밀도 조건을 선택적으로 제외하지 않습니다. 그런 응답은 별도 진단에 기록하고 진행하며, 연결 실패·서버 장애는 실제 task를 시작하기 전에 중단합니다. 더미 요청 2회가 모든 길이의 계산 준비나 열적 안정성을 완전히 보장하는 것은 아닙니다.
+
+RAM 측정기는 워밍업이 끝난 뒤 과제 실행 구간에만 동작합니다. 워밍업 중의 메모리 최고값은 측정하지 않지만, 워밍업 이후 상주하는 모델·실행기 메모리는 과제 구간의 RAM에 포함됩니다. 모델을 처음 불러오는 순간의 cold-start peak를 측정하는 실험과는 구분합니다.
+
+첫 정상 준비가 끝나면 `results/experiment_settings.json`에 모델과 무관한 공통 설정을 잠급니다. 이후 FP16·Q8·Q4와 세 조건은 이 파일을 함께 사용하며 요청 설정·서버 버전·chat template·context·slot·장비 정보·워밍업 정책이 다르면 중단합니다. 모델 경로·정밀도 자체는 비교 대상이므로 잠금 비교에서 제외합니다. 설정이 다르다는 오류가 나면 기존 파일을 지워 우회하지 말고 원래 설정을 확인합니다. 의도적인 새 실험에는 `--settings-lock results/new_series_settings.json`처럼 새 경로와 결과 폴더를 사용합니다.
+
+각 실행에는 결과 JSONL과 같은 이름의 `.preflight.json` 진단 파일도 생깁니다. 예를 들어 `run.jsonl`이면 `run.preflight.json`이며, 원본 `/props`, 실제 요청 설정, 워밍업 응답별 시간·토큰·상태를 담습니다. 과제 로그의 metadata에는 설정·버전·잠금 hash와 워밍업 진단을 남기지만, 워밍업은 task 행·과제 지표에 포함하지 않습니다. 실패한 준비도 진단을 남기고, 기존 결과·잠금·진단 파일은 덮어쓰지 않습니다. 결과 공유 시 JSONL·preflight·설정 잠금 파일을 함께 드라이브에 올립니다.
+
+자동 검사는 `/props`가 제공한 값에 한정됩니다. **실제 GPU 배치·GPU 모델·스레드·KV cache 정밀도·전체 서버 실행 옵션까지 검증한 것은 아닙니다.** 모델 hash도 `--model-path`로 지정한 로컬 파일의 hash이므로 서버가 그 파일을 사용했는지 시작 로그에서 확인합니다. 서버 설정을 요청에서 고정하는 동작과 `/props` 기록은 [llama.cpp 공식 서버 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)를 기준으로 구현했습니다. 구형 서버가 필수 속성을 제공하지 않으면 같은 지원 버전으로 팀 환경을 맞춥니다.
 
 ## 6. 실제 모델로 조건 실행
 
 서버 실행 후 별도 터미널에서 실행합니다. 아래 슬래시 경로는 Windows CMD/PowerShell·WSL·macOS 공통입니다. 예시는 self-Q4이며, 실제 FP16·Q8·Q4 모델을 서버에서 교체할 때 라벨·모델 경로·서버 PID도 맞춥니다.
 
 ```text
-python scripts/run_experiment.py --model-label self-Q4 --condition free --task-type execution --base-url http://127.0.0.1:18080
-python scripts/run_experiment.py --model-label self-Q4 --condition normal_restart --task-type recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
-python scripts/run_experiment.py --model-label self-Q4 --condition error_restart --task-type recovery --base-url http://127.0.0.1:18080 --recovery-budget 3
+python scripts/run_experiment.py --model-label self-Q4 --condition free --task-type execution --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2
+python scripts/run_experiment.py --model-label self-Q4 --condition normal_restart --task-type recovery --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2 --recovery-budget 3
+python scripts/run_experiment.py --model-label self-Q4 --condition error_restart --task-type recovery --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2 --recovery-budget 3
 ```
 
 モデル hash와 메모리를 기록하려면 세 명령 모두에 실제 `--model-path models/모델파일.gguf --server-pid 실제PID`를 추가합니다. 처음 확인할 때는 `--limit 1`을 사용합니다.
 
 `free`는 execution 60개, `normal_restart`와 `error_restart`는 같은 recovery 60개를 각각 선택합니다. `--condition recovery`를 입력해도 `error_restart`로 기록됩니다. 구버전 execution checkpoint 진단은 `--condition normal_restart --task-type execution`으로 명시해야 하며 회복 비교에는 포함되지 않습니다.
 
-세 정밀도에서 task·프롬프트·도구·seed·context size·thinking 설정·llama.cpp 버전·장비·호출 예산을 같게 유지합니다. 서버의 완전한 설정 수집, 워밍업, GPU VRAM, resume/반복 번호 지원은 후속 보완 대상입니다. 현재 client의 temperature/max_tokens/seed/timeout 값은 metadata의 inference_settings에 기록되지만 CLI로 변경하는 기능은 아직 없습니다.
+세 정밀도에서 task·프롬프트·도구·추론 설정·장비·호출 예산을 같게 유지합니다. 공통 설정과 워밍업은 위 잠금 파일로 관리하며, 서버에서 확인된 버전은 `llama_cpp_version`에 기록합니다. 준비 프로토콜·서버 설정 hash·워밍업 정책·잠금 hash가 다른 결과는 같은 회복 비교로 합치지 않습니다. 전체 서버 설정의 자동 검증, GPU VRAM, resume/반복 번호는 여전히 별도 보완 대상입니다. 과거 워밍업 없는 결과와 현재 결과는 합치지 않습니다.
 
 ## 7. 회복 실험과 집계
 

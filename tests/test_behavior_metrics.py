@@ -357,6 +357,19 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertEqual(comparison["diagnostics"]["total_matched_pairs"], 0)
         self.assertFalse(comparison["summaries"])
 
+    def test_new_preparation_configurations_are_not_combined_or_paired(self):
+        for field in ("preparation_protocol", "server_configuration_sha256", "warmup_settings", "settings_lock_sha256"):
+            with self.subTest(field=field):
+                normal = self.recovery_record("normal_restart")
+                error = self.recovery_record("error_restart")
+                normal["metadata"][field] = "series-a"
+                error["metadata"][field] = "series-b"
+                self.assertEqual(compare_recovery_records([normal, error])["diagnostics"]["total_matched_pairs"], 0)
+                with self.assertRaisesRegex(ValueError, "Mixed devices"):
+                    validate_analysis_configurations([normal, error])
+                normal["metadata"].pop(field)
+                self.assertEqual(compare_recovery_records([normal, error])["diagnostics"]["total_matched_pairs"], 0)
+
     def test_infrastructure_failure_excludes_the_matched_pair(self):
         normal = self.recovery_record("normal_restart")
         error = self.recovery_record("error_restart")

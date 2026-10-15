@@ -4,9 +4,21 @@ from __future__ import annotations
 
 import json
 import http.client
+import math
 import urllib.error
 import urllib.request
 from typing import Any
+
+
+def _reject_nonfinite(value: str) -> Any:
+    raise ValueError(f"nonfinite JSON number: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"nonfinite JSON number: {value}")
+    return number
 
 
 class InfrastructureError(RuntimeError):
@@ -173,22 +185,69 @@ class LlamaCppClient:
         max_tokens: int = 512,
         timeout_seconds: float = 120.0,
     ) -> None:
-        self.endpoint = base_url.rstrip("/") + "/v1/chat/completions"
+        if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
+                or not math.isfinite(temperature) or temperature < 0):
+            raise ValueError("temperature must be finite and nonnegative")
+        if type(seed) is not int or not 0 <= seed < 2 ** 32 - 1:
+            raise ValueError("seed must be an integer from 0 through 4294967294 (not random)")
+        if type(max_tokens) is not int or max_tokens < 1:
+            raise ValueError("max_tokens must be a positive integer")
+        if (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float))
+                or not math.isfinite(timeout_seconds) or timeout_seconds <= 0):
+            raise ValueError("timeout_seconds must be finite and positive")
+        self.base_url = base_url.rstrip("/")
+        self.endpoint = self.base_url + "/v1/chat/completions"
         self.model = model
         self.temperature = temperature
         self.seed = seed
         self.max_tokens = max_tokens
         self.timeout_seconds = timeout_seconds
 
+    def request_settings(self) -> dict[str, Any]:
+        """Exact, model-independent settings sent on EVERY inference request.
+
+        Deliberately uncached, non-thinking and one-action-at-a-time. Only the
+        temperature sampler is active, so inherited filters/penalties cannot
+        silently change the sampling chain between servers.
+        """
+        return {
+            "temperature": self.temperature, "seed": self.seed, "max_tokens": self.max_tokens,
+            "top_p": 1.0, "top_k": 0, "min_p": 0.0,
+            "repeat_penalty": 1.0, "presence_penalty": 0.0, "frequency_penalty": 0.0,
+            "samplers": ["temperature"], "dynatemp_range": 0.0, "mirostat": 0,
+            "chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none",
+            "parallel_tool_calls": False, "cache_prompt": False, "stream": False, "n": 1,
+            "tool_choice": "auto",
+        }
+
+    def _request_json(self, request: urllib.request.Request) -> dict[str, Any]:
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"), parse_constant=_reject_nonfinite,
+                                     parse_float=_parse_finite_float)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise InfrastructureError(f"llama-server HTTP {exc.code}: {body}", kind="http_error") from exc
+        except urllib.error.URLError as exc:
+            raise InfrastructureError(f"could not reach llama-server at {request.full_url}: {exc}", kind="connection_error") from exc
+        except (TimeoutError, OSError, http.client.HTTPException) as exc:
+            raise InfrastructureError(f"llama-server transport failed: {exc}", kind="transport_error") from exc
+        except (ValueError, UnicodeError) as exc:
+            raise InfrastructureError("llama-server returned invalid response JSON", kind="response_protocol") from exc
+        if not isinstance(payload, dict):
+            raise InfrastructureError("llama-server response is not an object", kind="response_protocol")
+        return payload
+
+    def get_server_properties(self) -> dict[str, Any]:
+        """Read-only properties; router/multi-model mode is outside this runner."""
+        return self._request_json(urllib.request.Request(self.base_url + "/props", method="GET"))
+
     def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         request_body = {
             "model": self.model,
             "messages": messages,
             "tools": tools,
-            "tool_choice": "auto",
-            "temperature": self.temperature,
-            "seed": self.seed,
-            "max_tokens": self.max_tokens,
+            **self.request_settings(),
         }
         request = urllib.request.Request(
             self.endpoint,
@@ -196,18 +255,7 @@ class LlamaCppClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise InfrastructureError(f"llama-server HTTP {exc.code}: {body}", kind="http_error") from exc
-        except urllib.error.URLError as exc:
-            raise InfrastructureError(f"could not reach llama-server at {self.endpoint}: {exc}", kind="connection_error") from exc
-        except (TimeoutError, OSError, http.client.HTTPException) as exc:
-            raise InfrastructureError(f"llama-server transport failed: {exc}", kind="transport_error") from exc
-        except (json.JSONDecodeError, UnicodeError) as exc:
-            raise InfrastructureError("llama-server returned invalid response JSON", kind="response_protocol") from exc
+        payload = self._request_json(request)
         action = parse_chat_response(payload)
         return {
             "action": action,
