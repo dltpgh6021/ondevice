@@ -80,8 +80,9 @@ def validate_task(task: Task) -> None:
             raise ValueError(f"{task.task_id}: execution-v2 requires an execution fixture")
         if task.error_injection or task.recovery_query:
             raise ValueError(f"{task.task_id}: execution task must not inject an error")
-        if len(task.initial_actions or []) + task.horizon != 5:
-            raise ValueError(f"{task.task_id}: initial context and remaining horizon must total 5")
+        # initial_actions are user-message seeds: none at h5, at least one otherwise.
+        if bool(task.initial_actions) != (task.horizon < 5):
+            raise ValueError(f"{task.task_id}: only shorter horizons may seed provided context")
     if task.task_type == "recovery" and not task.error_injection:
         raise ValueError(f"{task.task_id}: recovery task requires error_injection")
     if task.schema_version == "recovery-v2":
@@ -89,8 +90,9 @@ def validate_task(task: Task) -> None:
             raise ValueError(f"{task.task_id}: recovery-v2 requires a fixture and the original query only")
         if len(task.initial_actions or []) + task.horizon != 5 or task.checkpoint_step != 0:
             raise ValueError(f"{task.task_id}: invalid recovery checkpoint")
-        if task.normal_remaining_calls != task.horizon or task.recovery_min_calls != task.horizon + 1:
-            raise ValueError(f"{task.task_id}: normal/recovery minimum must be h and h+1")
+        if (task.normal_remaining_calls != task.horizon or task.recovery_min_calls is None
+                or not 1 <= task.recovery_min_calls <= task.horizon):
+            raise ValueError(f"{task.task_id}: normal minimum must be h and repair minimum 1..h")
         if len(task.recovery_actions or []) != task.recovery_min_calls:
             raise ValueError(f"{task.task_id}: recovery oracle length differs from recovery_min_calls")
     for index, action in enumerate(task.gold_actions):

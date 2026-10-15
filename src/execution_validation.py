@@ -5,6 +5,7 @@ This enumerates reference subsequences, not arbitrary model strategies.
 from __future__ import annotations
 
 import copy
+import json
 from collections import Counter, defaultdict
 from typing import Any
 
@@ -96,19 +97,29 @@ def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
     for base_id, variants in by_base.items():
         _require(Counter(t.horizon for t in variants) == Counter({1: 1, 3: 1, 5: 1}), f"{base_id}: missing matched horizons")
         reference = variants[0]
-        full_chain = list(reference.initial_actions or []) + reference.gold_actions
+        spec = reference.execution_spec
+        _require(spec["domain"] == reference.domain, f"{base_id}: fixture domain differs")
+        candidate, option = _infer_target(spec)
+        full_chain = _actions(spec, candidate, option)
         for task in variants:
             _require((task.query, task.execution_spec, task.success_condition, task.domain) ==
                      (reference.query, reference.execution_spec, reference.success_condition, reference.domain),
                      f"{base_id}: horizon variants differ in question, fixture, domain or goal")
-            _require(list(task.initial_actions or []) + task.gold_actions == full_chain,
-                     f"{base_id}: horizon variants do not partition the same chain")
+            _require(task.gold_actions == full_chain[5 - task.horizon:],
+                     f"{task.task_id}: gold differs from the inferred target's remaining workflow")
             _require(not task.error_injection and not task.recovery_query, f"{task.task_id}: execution injects an error")
+            seeds = list(task.initial_actions or [])
+            if task.horizon == 5:
+                _require(seeds == [], f"{task.task_id}: h5 must start without provided context")
+            elif task.horizon == 3:
+                _require(seeds == full_chain[:2], f"{task.task_id}: h3 must provide exactly the request and candidates")
+            else:
+                prepare = WORKFLOWS[spec["domain"]]["names"][3]
+                drafts = [action for action in seeds if action["tool"] == prepare]
+                _require(seeds[:3] == full_chain[:3] and full_chain[3] in drafts and len(drafts) == 3
+                         and len({json.dumps(d["arguments"], sort_keys=True) for d in drafts}) == 3,
+                         f"{task.task_id}: h1 must provide three distinct drafts including the correct one")
         checks["matched_scenarios"] += 1
-        spec = reference.execution_spec
-        _require(spec["domain"] == reference.domain, f"{base_id}: fixture domain differs")
-        candidate, option = _infer_target(spec)
-        _require(full_chain == _actions(spec, candidate, option), f"{base_id}: gold differs from inferred target")
         completion = {
             "request_id": spec["request_id"], "domain": spec["domain"],
             "candidate_id": candidate["candidate_id"], "option_id": option["option_id"],
@@ -132,6 +143,24 @@ def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
                          "inspection changes durable completion")
                 checks["gold_replays"] += 1
                 checks["durable_inspections"] += 1
+                messages, _ = _environment(task).prepare_condition(task, "free")
+                _require(len(messages) == 2 and not any(m.get("tool_calls") for m in messages),
+                         "free execution must not present provided context as the model's own tool calls")
+                checks["user_message_context"] += 1
+                if task.horizon == 1:
+                    confirm = WORKFLOWS[spec["domain"]]["names"][4]
+                    env = _environment(task)
+                    wrong_drafts = [draft_id for draft_id in env.state["drafts"]
+                                    if draft_id != task.gold_actions[0]["arguments"]["draft_id"]]
+                    _require(len(wrong_drafts) == 2, "h1 needs exactly two wrong drafts")
+                    for draft_id in wrong_drafts:
+                        env = _environment(task)
+                        result = env.execute(confirm, {"draft_id": draft_id})
+                        _require(result.get("ok") is True and env.assess_action_result(result) == "saved_result_violates_request"
+                                 and not env.check_success(task.success_condition), "a wrong h1 draft passes grading")
+                        env.execute(confirm, task.gold_actions[0]["arguments"])
+                        _require(env.check_success(task.success_condition), "re-confirming the correct draft does not repair")
+                        checks["h1_wrong_draft_rejections"] += 1
                 for mask in range((1 << task.horizon) - 1):
                     env = _environment(task)
                     for index, action in enumerate(task.gold_actions):
@@ -186,7 +215,7 @@ def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
         "validation_scope": "reference subsequences, prerequisite swaps, legacy mutations, and wrong choices",
         "limitations": [
             "Not exhaustive search over arbitrary tool arguments or action sequences.",
-            "Horizon is remaining calls in a controlled five-resource workflow with a supplied correct prefix.",
+            "Horizon is remaining calls in a controlled five-resource workflow; earlier results are supplied in the user message.",
             "Recovery tasks are outside this execution-v2 validation scope.",
         ],
     }

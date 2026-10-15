@@ -188,6 +188,17 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         error_episodes = [row["error_count"] > 0 for row in valid_rows
                           if isinstance(row.get("error_count"), (int, float))]
 
+        def conditional_rate(condition_field: str, outcome_field: str) -> float | None:
+            subset = [row for row in valid_rows if row.get(condition_field) is True]
+            return round(sum(bool(row.get(outcome_field)) for row in subset) / len(subset), 4) if subset else None
+
+        stage_counts: dict[str, int] = defaultdict(int)
+        for row in valid_rows:
+            if row.get("first_error_turn") is not None:
+                stage_counts[str(row.get("first_error_workflow_stage") or "non_workflow")] += 1
+        extra_all = [row["extra_calls_over_normal"] for row in valid_rows
+                     if isinstance(row.get("extra_calls_over_normal"), int)]
+
         summaries.append(
             {
                 "model_label": model_label,
@@ -215,9 +226,18 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_tool_action_error_rate": mean("tool_action_error_rate"),
                 "pooled_tool_action_error_rate": pooled("tool_error_action_count", "executed_tool_call_count"),
                 "natural_error_rate": rate("natural_error") if condition == "free" else None,
-                "next_action_accuracy": rate("next_action_correct")
-                if condition == "normal_restart"
-                else None,
+                # Among free runs with a natural error, the share that still ended correct.
+                "natural_error_recovery_rate": conditional_rate("natural_error", "strict_success")
+                if condition == "free" else None,
+                # Same mistake as the injected recovery error, made by the model itself.
+                "wrong_save_episode_rate": rate("wrong_save_episode"),
+                "wrong_save_recovery_rate": conditional_rate("wrong_save_episode", "strict_success"),
+                "first_error_stage_counts": dict(sorted(stage_counts.items())),
+                "next_action_accuracy": rate("next_action_correct"),
+                "next_action_valid_rate": rate("next_action_valid"),
+                "n_successful": sum(row.get("strict_success") is True for row in valid_rows),
+                # Survivorship-free companion to the success-only extra-call means.
+                "mean_extra_calls_over_normal_all_runs": round(sum(extra_all) / len(extra_all), 4) if extra_all else None,
                 "recovery_rate": rate("recovery_success")
                 if is_recovery
                 else None,
@@ -254,6 +274,7 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_completion_tokens": mean("completion_tokens"),
                 "mean_max_ram_mb": mean("max_ram_mb"),
                 "mean_peak_server_ram_mb": mean("peak_server_ram_mb"),
+                "mean_peak_gpu_memory_mb": mean("peak_gpu_memory_mb"),
             }
         )
     return summaries

@@ -26,7 +26,7 @@ class TaskSelectionTests(unittest.TestCase):
         cls.task_path = ROOT / "tasks" / "tasks.json"
         cls.tasks = load_tasks(cls.task_path)
         cls.validation = {
-            "language": "en", "dataset_version": "workflow-en-v1",
+            "language": "en", "dataset_version": "workflow-en-v2",
             "dataset_sha256": "offline-dataset-hash",
             "tasks_file_sha256": "offline-file-hash",
             "validator_version": "dataset-validator-v1",
@@ -183,7 +183,8 @@ class TaskSelectionTests(unittest.TestCase):
                     record, _ = self._run_scripted_selection(condition=condition, horizon=horizon)
                     self.assertEqual(record["task"]["horizon"], horizon)
                     self.assertEqual(record["task"]["task_type"], "execution" if condition == "free" else "recovery")
-                    expected_calls = horizon + (condition == "error_restart")
+                    expected_calls = (record["task"]["recovery_min_calls"] if condition == "error_restart"
+                                      else horizon)
                     self.assertEqual(record["score"]["executed_tool_call_count"], expected_calls)
 
     def test_exact_nonfirst_task_id_is_used_by_real_offline_run(self) -> None:

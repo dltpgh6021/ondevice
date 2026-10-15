@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from .execution_environment import completion_condition_matches
+from .execution_environment import completion_condition_matches, workflow_stage
 from .tasks import Task
 
-METRICS_VERSION = "workflow-metrics-v3"
+METRICS_VERSION = "workflow-metrics-v4"
 LEGACY_METRICS_VERSION = "workflow-metrics-v2"
 LEGACY_AGENT_POLICY = "legacy-unversioned"
 MODEL_ERRORS = {"model_output_error", "invalid_action", "invalid_arguments"}
@@ -33,6 +33,26 @@ def _fatal_event(event: dict[str, Any], trace: dict[str, Any]) -> bool:
 def _behavior_error(event: dict[str, Any]) -> bool:
     return bool(event.get("tool_error") or event.get("semantic_error")
                 or event.get("model_error") or event.get("error") in MODEL_ERRORS)
+
+
+def _error_kind(event: dict[str, Any]) -> str | None:
+    """One label per erroneous response: model output, tool rejection, or semantic."""
+    if event.get("model_error"):
+        return f"model_output:{event['model_error']}"
+    if event.get("error") in MODEL_ERRORS:
+        return f"model_output:{event['error']}"
+    if event.get("tool_error"):
+        return f"tool_error:{event['tool_error']}"
+    if event.get("semantic_error"):
+        return f"semantic:{event['semantic_error']}"
+    return None
+
+
+def _same_call(event: dict[str, Any], expected: dict[str, Any] | None) -> bool:
+    action = event.get("action")
+    return (expected is not None and isinstance(action, dict) and action.get("type") == "tool_call"
+            and action.get("name") == expected.get("tool")
+            and (action.get("arguments") or {}) == (expected.get("arguments") or {}))
 
 
 def _stable_false_turn(events: list[dict[str, Any]], name: str, final_absent: bool) -> int | None:
@@ -79,10 +99,27 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
     normal_calls = task.normal_remaining_calls if paired else task.horizon - (
         task.checkpoint_step if condition == "normal_restart" else 0)
     oracle_calls = task.recovery_min_calls if recovery else normal_calls
-    injected_ids = [item["result"]["saved_result"]["request_id"]
-                    for item in trace.get("injected_actions", [])]
+    wrong_results = [item["result"]["saved_result"] for item in trace.get("injected_actions", [])
+                     if "saved_result" in item.get("result", {})]
     saved = trace.get("final_state", {}).get("completed_requests", {})
-    error_resolved = all(key not in saved for key in injected_ids) if recovery and injected_ids else None
+    error_resolved = (all(saved.get(wrong["request_id"]) != wrong for wrong in wrong_results)
+                      if recovery and wrong_results else None)
+    # Next action: the first model response at the shared starting state.
+    if recovery:
+        oracle = task.recovery_actions or []
+    elif condition == "normal_restart" and not paired:
+        oracle = task.gold_actions[task.checkpoint_step:]
+    else:
+        oracle = task.gold_actions
+    first_response = response_events[0] if response_events else None
+    next_action_correct = _same_call(first_response, oracle[0] if oracle else None) if first_response else (
+        False if valid else None)
+    next_action_valid = (bool(first_response and _executed(first_response) and not _behavior_error(first_response))
+                         if valid else None)
+    first_error_action = (first_error_event or {}).get("action")
+    first_error_tool = first_error_action.get("name") if isinstance(first_error_action, dict) else None
+    wrong_saves = [event for event in response_events if event.get("semantic_error") == "saved_result_violates_request"]
+    natural_error = bool(errors) if condition == "free" and valid else None
     resolution_steps = [event["step"] for event in response_events
                         if event.get("injected_error_present_after") is False]
     attempts = sum(event.get("attempted_tool_call_count", int(
@@ -105,7 +142,11 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "unclassified_runtime_error_count": unclassified_runtime_count,
         "termination_reason": trace.get("termination_reason"),
         "budget_exhausted": trace.get("termination_reason") == "budget_exhausted",
-        "natural_error": bool(errors) if condition == "free" and valid else None,
+        "natural_error": natural_error,
+        "natural_error_recovered": (natural_error and success) if natural_error is not None else None,
+        "wrong_save_count": len(wrong_saves),
+        "wrong_save_episode": bool(wrong_saves) if valid else None,
+        "wrong_save_recovered": (bool(wrong_saves) and success) if valid else None,
         "error_count": len(errors), "model_output_error_count": len(model_errors),
         "output_truncated_count": sum(event.get("model_error") == "output_truncated" for event in response_events),
         "multiple_tool_call_response_count": sum(event.get("model_error") == "multiple_tool_calls" for event in response_events),
@@ -114,7 +155,13 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "tool_action_error_rate": len(tool_error_actions) / executed_count if executed_count else None,
         "first_error_step": first_error, "first_error_turn": first_error,
         "first_error_tool_call_index": first_tool_index,
-        "next_action_correct": None,
+        "first_error_kind": _error_kind(first_error_event) if first_error_event else None,
+        "first_error_tool": first_error_tool,
+        # Absolute 1..5 workflow stage of the first erroneous tool call, comparable across horizons.
+        "first_error_workflow_stage": workflow_stage(task.domain, first_error_tool),
+        "resume_workflow_step": trace.get("resume_workflow_step"),
+        "next_action_correct": next_action_correct,
+        "next_action_valid": next_action_valid,
         "recovery_success": success if recovery else None,
         "recovery_error_resolved": error_resolved,
         "recovery_resolution_step": min(resolution_steps, default=None) if recovery else None,
@@ -144,4 +191,5 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "elapsed_ms": trace.get("elapsed_ms", 0.0),
         "prompt_tokens": trace.get("prompt_tokens", 0), "completion_tokens": trace.get("completion_tokens", 0),
         "max_ram_mb": trace.get("max_ram_mb"), "peak_server_ram_mb": trace.get("peak_server_ram_mb"),
+        "peak_gpu_memory_mb": trace.get("peak_gpu_memory_mb"),
     }

@@ -1,7 +1,9 @@
-"""Validate matched recovery fixtures with one observable extra saved result.
+"""Validate matched recovery fixtures with one observable wrong saved result.
 
-This checks supplied checkpoint artifacts and reference repair subsequences.
-It does not claim exhaustive search over arbitrary tool arguments or policies.
+The injected error is the natural free-execution mistake: a candidate that
+violates the request constraints is confirmed for the same request. This checks
+supplied checkpoint artifacts and reference repair subsequences. It does not
+claim exhaustive search over arbitrary tool arguments or policies.
 """
 
 from __future__ import annotations
@@ -14,7 +16,8 @@ from typing import Any
 from .agent import run_agent
 from .client import ScriptedClient
 from .environment import environment_for_task
-from .execution_environment import ExecutionEnvironment, WORKFLOWS
+from .execution_environment import ExecutionEnvironment, WORKFLOWS, candidate_is_eligible
+from .execution_validation import _actions, _infer_target
 from .tasks import Task, stable_hash
 from .metrics import score_trace
 
@@ -44,6 +47,23 @@ def _model_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ] + [{"type": "finish", "answer": "completed"}]
 
 
+def _expected_plan(spec: dict[str, Any], horizon: int) -> dict[str, list[dict[str, Any]]]:
+    """Independent derivation from public rules, not from the generator."""
+    candidate, option = _infer_target(spec)
+    chain = _actions(spec, candidate, option)
+    ineligible = [item for item in spec["candidates"] if not candidate_is_eligible(item, spec)]
+    _require(len(ineligible) == 1, "exactly one constraint-violating candidate is required")
+    required = spec["request"]["required_option_kind"]
+    wrong_options = [item for item in ineligible[0]["options"] if item["available"] and item["kind"] == required]
+    _require(len(wrong_options) == 1, "violating candidate needs one available requested option")
+    wrong_chain = _actions(spec, ineligible[0], wrong_options[0])
+    return {
+        "prefix": chain[:5 - horizon], "normal": chain[5 - horizon:],
+        "injected": wrong_chain[2:] if horizon == 1 else wrong_chain[5 - horizon:],
+        "repair": chain[4:] if horizon == 1 else chain[2:],
+    }
+
+
 def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
     """Check 60 recovery fixtures and their 60 corresponding execution tasks."""
     execution = {task.task_id: task for task in tasks if task.task_type == "execution"}
@@ -65,38 +85,20 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
             pair = execution[task.base_id]
             by_scenario[pair.base_id].append(task)
             _require(pair.schema_version == "execution-v2", "execution pair must use execution-v2")
-            _require((task.query, task.domain, task.horizon, task.initial_actions, task.gold_actions, task.success_condition) ==
-                     (pair.query, pair.domain, pair.horizon, pair.initial_actions, pair.gold_actions, pair.success_condition),
-                     "paired fixture changes original query, domain, horizon, correct prefix, oracle, or goal")
+            _require((task.query, task.domain, task.horizon, task.gold_actions, task.success_condition) ==
+                     (pair.query, pair.domain, pair.horizon, pair.gold_actions, pair.success_condition),
+                     "paired fixture changes original query, domain, horizon, normal oracle, or goal")
+            _require(task.execution_spec == pair.execution_spec, "fixture changes request or candidates")
             _require(not task.recovery_query, "recovery must retain the original query without corrective instructions")
+            plan = _expected_plan(task.execution_spec, task.horizon)
+            _require(task.initial_actions == plan["prefix"], "checkpoint prefix is not the correct workflow prefix")
+            _require(task.gold_actions == plan["normal"], "normal oracle differs from the inferred target")
             _require(task.normal_remaining_calls == task.horizon, "normal remaining calls must equal nominal horizon")
-            _require(task.recovery_min_calls == task.horizon + 1, "repair minimum must include the additional cleanup call")
-            _require(len(task.gold_actions) == task.normal_remaining_calls, "normal oracle length differs from metadata")
-            _require(len(task.recovery_actions) == task.recovery_min_calls, "repair oracle length differs from metadata")
-            spec = copy.deepcopy(task.execution_spec)
-            initial_drafts = spec.pop("initial_drafts", None)
-            _require(spec == pair.execution_spec, "fixture changes request or candidates beyond the shared seeded artifact")
-            _require(isinstance(initial_drafts, dict) and len(initial_drafts) == 1, "exactly one stale draft is required")
-            stale_draft_id, stale = next(iter(initial_drafts.items()))
-            target = task.success_condition["completed_request_equals"]
-            stale_request_id = stale.get("request_id")
-            _require(isinstance(stale_request_id, str) and stale_request_id.startswith("request_"),
-                     "stale draft needs a distinct opaque request ID")
-            _require(stale_request_id != target["request_id"], "wrong saved result must be for a different request")
-            _require(stale.get("domain") == task.domain, "stale artifact changes domain")
-            _require(stale.get("candidate_id") != target["candidate_id"] and stale.get("option_id") != target["option_id"],
-                     "stale artifact must contain a wrong candidate and option")
-            stale_candidate = next((candidate for candidate in spec["candidates"]
-                                    if candidate["candidate_id"] == stale.get("candidate_id")), None)
-            _require(stale_candidate is not None, "stale artifact candidate does not exist")
-            _require(any(option["option_id"] == stale.get("option_id") and option.get("available") is True
-                         for option in stale_candidate["options"]), "stale artifact option does not exist or is unavailable")
-            injection = {"tool": WORKFLOWS[task.domain]["names"][4], "arguments": {"draft_id": stale_draft_id}}
-            _require(task.error_injection == {"type": "extra_saved_record", "action": injection},
-                     "injection must be an actual confirmation of the seeded stale draft")
-            cleanup = {"tool": "discard_saved_result", "arguments": {"request_id": stale_request_id}}
-            _require(task.recovery_actions == [cleanup] + task.gold_actions,
-                     "repair oracle must clean the stale result and then follow the normal oracle")
+            _require(task.error_injection == {"type": "wrong_saved_result", "actions": plan["injected"]},
+                     "injection must continue with the constraint-violating candidate for the same request")
+            _require(task.recovery_actions == plan["repair"], "repair oracle is not the minimal re-confirmation path")
+            _require(task.recovery_min_calls == len(task.recovery_actions) <= task.horizon,
+                     "repair minimum must equal the oracle and not exceed the normal horizon")
             checks["matched_execution_pairs"] += 1
 
             normal, normal_messages = _start(task, "normal_restart")
@@ -112,33 +114,38 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
                      "conditions do not branch from the same checkpoint state")
             _require(normal_meta["checkpoint_state_hash"] == error_meta["checkpoint_state_hash"] == stable_hash(normal.snapshot()),
                      "pre-branch checkpoint hashes differ or are incorrect")
-            _require(normal_meta["resume_workflow_step"] == error_meta["resume_workflow_step"] == len(task.initial_actions or []),
+            _require(normal_meta["resume_workflow_step"] == error_meta["resume_workflow_step"] == 5 - task.horizon,
                      "resume step does not match the provided correct prefix")
             _require(normal_meta["injected_actions"] == [], "normal condition contains an injected action")
-            _require(len(error_meta["injected_actions"]) == 1, "error condition needs exactly one injected action")
-            injected = error_meta["injected_actions"][0]
-            _require(injected["action"] == injection and injected["result"].get("ok") is True,
-                     "injected action was not executed successfully")
-            _require(normal.state["drafts"].get(stale_draft_id) == stale and error.state["drafts"].get(stale_draft_id) == stale,
-                     "stale artifact is not present in both pre-existing resource sets")
-            _require(normal.state["completed_requests"] == {} and error.state["completed_requests"] == {stale_request_id: stale},
-                     "injection does not create exactly the intended extra saved record")
-            expected_after = normal.snapshot()
-            expected_after["completed_requests"][stale_request_id] = copy.deepcopy(stale)
-            _require(error.snapshot() == expected_after, "injection changes resources beyond the intended saved record")
-            _require(error_messages[:-2] == normal_messages and len(normal_messages) == 2 + 2 * len(task.initial_actions or []),
-                     "paired histories differ beyond the observable injected call")
-            injected_call, injected_result = error_messages[-2:]
-            _require(injected_call["role"] == "assistant" and len(injected_call.get("tool_calls", [])) == 1,
-                     "injected assistant tool call is missing")
-            call = injected_call["tool_calls"][0]
-            _require(call["function"]["name"] == injection["tool"] and
-                     json.loads(call["function"]["arguments"]) == injection["arguments"],
-                     "visible injected call differs from the executed action")
-            _require(injected_result["role"] == "tool" and injected_result["tool_call_id"] == call["id"] and
-                     json.loads(injected_result["content"]) == injected["result"],
-                     "injected result is absent or differs from the actual tool response")
-            _require(injected["result"].get("saved_result") == stale, "tool result does not expose the incorrect saved record")
+            injected = error_meta["injected_actions"]
+            _require([item["action"] for item in injected] == plan["injected"] and
+                     all(item["result"].get("ok") is True for item in injected),
+                     "injected actions were not executed successfully")
+            target = task.success_condition["completed_request_equals"]
+            wrong = injected[-1]["result"].get("saved_result")
+            _require(isinstance(wrong, dict) and wrong.get("request_id") == target["request_id"],
+                     "injected history must save a result for the same request")
+            _require(wrong["candidate_id"] != target["candidate_id"] and error.assess_action_result(injected[-1]["result"])
+                     == "saved_result_violates_request", "injected saved result must violate the request")
+            _require(normal.state["completed_requests"] == {} and error.state["completed_requests"] == {target["request_id"]: wrong},
+                     "injection does not create exactly the intended wrong saved record")
+            _require(error.injected_error_present() and not normal.injected_error_present(),
+                     "injected error presence is not observable")
+            _require(error_messages[:len(normal_messages)] == normal_messages and
+                     len(normal_messages) == 2 + 2 * len(task.initial_actions or []) and
+                     len(error_messages) == len(normal_messages) + 2 * len(injected),
+                     "paired histories differ beyond the observable injected calls")
+            for offset, item in enumerate(injected):
+                call_message, result_message = error_messages[len(normal_messages) + 2 * offset:][:2]
+                _require(call_message["role"] == "assistant" and len(call_message.get("tool_calls", [])) == 1,
+                         "injected assistant tool call is missing")
+                call = call_message["tool_calls"][0]
+                _require(call["function"]["name"] == item["action"]["tool"] and
+                         json.loads(call["function"]["arguments"]) == item["action"]["arguments"],
+                         "visible injected call differs from the executed action")
+                _require(result_message["role"] == "tool" and result_message["tool_call_id"] == call["id"] and
+                         json.loads(result_message["content"]) == item["result"],
+                         "injected result is absent or differs from the actual tool response")
             _require(not normal.check_success(task.success_condition) and not error.check_success(task.success_condition),
                      "task begins complete")
             repeated, repeated_messages = _start(task, "error_restart")
@@ -150,24 +157,26 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
             _replay(normal, task.gold_actions)
             _require(normal.check_success(task.success_condition), "normal oracle does not complete the request")
             checks["normal_oracle_replays"] += 1
-            _replay(error, task.gold_actions)
-            _require(not error.check_success(task.success_condition), "correct target alone hides the extra wrong saved result")
-            _require(set(error.state["completed_requests"]) == {target["request_id"], stale_request_id},
-                     "target confirmation unexpectedly removes the wrong request")
-            _replay(error, [cleanup])
-            _require(error.check_success(task.success_condition), "cleanup after normal work does not succeed")
-            checks["cleanup_last_replays"] += 1
-            error, _ = _start(task, "error_restart")
             _replay(error, task.recovery_actions)
-            _require(error.check_success(task.success_condition), "repair oracle does not complete the request")
+            _require(error.check_success(task.success_condition) and not error.injected_error_present(),
+                     "repair oracle does not replace the wrong saved result")
             before = error.snapshot()
             _require(error.execute("inspect_state", {}).get("ok") is True and error.snapshot() == before and
                      error.check_success(task.success_condition), "read-only inspection changes completion")
-            error.execute("discard_saved_result", {"request_id": "unknown_request_not_in_fixture"})
-            _require(error.snapshot() == before and error.check_success(task.success_condition),
-                     "discarding an unknown request removes the requested result")
+            error.execute(WORKFLOWS[task.domain]["names"][4], plan["injected"][-1]["arguments"])
+            _require(error.injected_error_present() and not error.check_success(task.success_condition),
+                     "re-confirming the wrong draft is not detected")
             checks["repair_oracle_replays"] += 1
-            checks["durable_inspections_and_target_preservation"] += 1
+            checks["wrong_reconfirmation_rejections"] += 1
+
+            error, _ = _start(task, "error_restart")
+            _replay(error, [{"tool": "discard_saved_result", "arguments": {"request_id": target["request_id"]}}]
+                    + task.recovery_actions)
+            _require(error.check_success(task.success_condition), "discard-then-confirm repair is rejected")
+            error, _ = _start(task, "error_restart")
+            _replay(error, task.gold_actions)
+            _require(error.check_success(task.success_condition), "following the normal workflow does not repair")
+            checks["alternative_repairs"] += 1
 
             for mask in range((1 << len(task.recovery_actions)) - 1):
                 probe, _ = _start(task, "error_restart")
@@ -195,22 +204,23 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
                 _require(all(not event.get("error") and not event.get("tool_error") for event in trace["events"]),
                          "oracle execution is counted as an agent error")
                 scored = score_trace(task, trace)
-                _require(scored["strict_success"] and scored["tool_call_count"] == len(oracle), "oracle scoring differs from state")
+                _require(scored["strict_success"] and scored["tool_call_count"] == len(oracle)
+                         and scored["next_action_correct"] is True, "oracle scoring differs from state")
                 if condition == "error_restart":
-                    _require(scored["recovery_error_count"] == 0 and scored["extra_calls_over_normal"] == 1 and
+                    _require(scored["recovery_error_count"] == 0 and scored["extra_calls_over_normal"] == 0 and
                              scored["extra_calls_over_oracle"] == 0 and scored["recovery_error_resolved"] is True,
                              "injected errors or oracle costs are scored incorrectly")
                 checks["scripted_agent_continuations"] += 1
-        except (KeyError, TypeError, ValueError, AttributeError, StopIteration) as exc:
+        except (KeyError, TypeError, ValueError, AttributeError, StopIteration, IndexError) as exc:
             raise ValueError(f"{task.task_id}: {exc}") from exc
 
     _require(len(by_scenario) == 20, "expected twenty matched base scenarios")
     for base_id, variants in by_scenario.items():
         _require(Counter(task.horizon for task in variants) == Counter({1: 1, 3: 1, 5: 1}),
                  f"{base_id}: recovery horizons are not matched")
-        reference = variants[0]
-        _require(all(task.error_injection == reference.error_injection and task.execution_spec == reference.execution_spec
-                     for task in variants), f"{base_id}: error mechanism or seeded artifact changes across horizons")
+        wrong = {task.error_injection["actions"][-1]["arguments"]["draft_id"] for task in variants}
+        _require(len(wrong) == 1 and all(task.execution_spec == variants[0].execution_spec for task in variants),
+                 f"{base_id}: injected wrong result changes across horizons")
         checks["common_error_across_horizons"] += 1
 
     return {
@@ -220,15 +230,15 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
         "paired_conditions_per_model": len(recovery) * 2,
         "by_horizon": {str(h): n for h, n in sorted(Counter(task.horizon for task in recovery).items())},
         "normal_remaining_calls": {str(h): h for h in (1, 3, 5)},
-        "recovery_min_calls": {str(h): h + 1 for h in (1, 3, 5)},
+        "recovery_min_calls": {str(h): sorted({task.recovery_min_calls for task in recovery if task.horizon == h})
+                               for h in (1, 3, 5)},
         "checks": dict(sorted(checks.items())),
-        "validation_scope": "matched checkpoints, visible side effects, exact saved-state grading, reference repair subsequences, and scripted continuations",
+        "validation_scope": "matched checkpoints, visible wrong continuations, exact saved-state grading, reference repair subsequences, and scripted continuations",
         "limitations": [
             "Not exhaustive search over arbitrary arguments, action sequences, or model policies.",
-            "The error is one supplied extra saved record for a wrong request; conclusions do not cover every agent failure type.",
-            "Nominal horizons 1/3/5 describe normal remaining work; minimum repair calls are 2/4/6.",
-            "Checkpoint draft artifacts are supplied fixtures rather than a complete naturally generated past session.",
-            "Error conditions contain one additional visible assistant/tool pair and the wrong saved state.",
+            "The error is one supplied wrong continuation that saves the constraint-violating candidate for the same request; conclusions do not cover every agent failure type.",
+            "Nominal horizons 1/3/5 describe normal remaining work; minimum repair calls are 1/3/3.",
+            "The injected continuation is supplied history rather than a naturally generated past session.",
             "Twenty base scenarios, rather than sixty independent problems, form the matched experimental units.",
         ],
     }

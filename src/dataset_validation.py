@@ -20,8 +20,8 @@ from .execution_validation import validate_execution_tasks
 from .recovery_validation import validate_recovery_tasks
 from .tasks import Task, canonical_json, stable_hash, validate_task_set
 
-DATASET_VERSION = "workflow-en-v1"
-VALIDATOR_VERSION = "dataset-validator-v1"
+DATASET_VERSION = "workflow-en-v2"
+VALIDATOR_VERSION = "dataset-validator-v2"
 
 
 class DatasetValidationError(ValueError):
@@ -112,11 +112,14 @@ def _schema(rows: Any) -> None:
         if is_recovery:
             for key in ("normal_remaining_calls", "recovery_min_calls"):
                 _type(row[key], int, path + "." + key)
-            _fields(row["error_injection"], {"type", "action"}, set(), path + ".error_injection")
-            _require(row["error_injection"]["type"] == "extra_saved_record", path + ": unsupported error injection")
-            _action(row["error_injection"]["action"], path + ".error_injection.action")
+            _fields(row["error_injection"], {"type", "actions"}, set(), path + ".error_injection")
+            _require(row["error_injection"]["type"] == "wrong_saved_result", path + ": unsupported error injection")
+            _type(row["error_injection"]["actions"], list, path + ".error_injection.actions")
+            _require(bool(row["error_injection"]["actions"]), path + ": error injection needs actions")
+            for number, action in enumerate(row["error_injection"]["actions"]):
+                _action(action, f"{path}.error_injection.actions[{number}]")
         spec = row["execution_spec"]
-        _fields(spec, {"domain", "request_id", "request", "candidates"}, {"initial_drafts"} if is_recovery else set(), path + ".execution_spec")
+        _fields(spec, {"domain", "request_id", "request", "candidates"}, set(), path + ".execution_spec")
         _require(spec["domain"] == row["domain"], path + ": fixture/task domain mismatch")
         _text(spec["request_id"], path + ".execution_spec.request_id")
         request = spec["request"]
@@ -226,6 +229,29 @@ def _model_payloads(tasks: list[Task]) -> dict[str, int]:
     return {"continuations_checked": continuations, "ascii_string_fields_checked": strings}
 
 
+def _condition_separation(tasks: list[Task]) -> dict[str, Any]:
+    """free and normal_restart must differ wherever an earlier result is supplied.
+
+    At h5 both start from the empty state, so their inputs coincide by definition.
+    """
+    by_id = {task.task_id: task for task in tasks}
+    identical: dict[str, int] = {"1": 0, "3": 0, "5": 0}
+    for task in tasks:
+        if task.task_type != "execution":
+            continue
+        recovery = by_id[f"recovery_{task.task_id}"]
+        free_env, normal_env = environment_for_task(task), environment_for_task(recovery)
+        free_messages, _ = free_env.prepare_condition(task, "free")
+        normal_messages, _ = normal_env.prepare_condition(recovery, "normal_restart")
+        same = canonical_json([free_messages, free_env.tool_definitions()]) == canonical_json(
+            [normal_messages, normal_env.tool_definitions()])
+        _require(not same or task.horizon == 5,
+                 f"{task.task_id}: free and normal_restart present identical model inputs")
+        identical[str(task.horizon)] += int(same)
+    return {"identical_free_normal_inputs_by_horizon": identical,
+            "note": "h5 free and normal_restart both start from the empty state by definition"}
+
+
 def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
     """Validate a full generated dataset without filesystem/network/model access."""
     stage = "schema"
@@ -243,6 +269,7 @@ def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
         recovery = validate_recovery_tasks(tasks)
         stage = "model_payloads"
         payloads = _model_payloads(tasks)
+        separation = _condition_separation(tasks)
         stage = "source_integrity"
         from scripts.build_execution_tasks import build_execution_tasks
         from scripts.build_recovery_tasks import build_recovery_tasks
@@ -256,6 +283,7 @@ def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
         return tasks, {"valid": True, "validator_version": VALIDATOR_VERSION, "language": "en", "dataset_version": DATASET_VERSION,
                        "dataset_sha256": stable_hash(rows), **collection, "errors": [],
                        "source_integrity": {"matches_generators": True}, "model_input_audit": payloads,
+                       "condition_separation": separation,
                        "execution_semantics": execution, "recovery_semantics": recovery,
                        "limitations": ["Bounded reference trajectory probes, not exhaustive search over all actions.",
                                        "ASCII checks and canonical wording do not prove natural-language correctness; human review is still required."]}

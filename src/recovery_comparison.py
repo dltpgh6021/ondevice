@@ -7,7 +7,9 @@ import json
 from collections import defaultdict
 from typing import Any, Iterable
 
-PROTOCOL = "extra-saved-record-v2"
+from .execution_environment import RECOVERY_PROTOCOL
+
+PROTOCOL = RECOVERY_PROTOCOL
 CONFIG_FIELDS = (
     "model_sha256", "model_label", "hostname", "platform", "processor", "machine",
     "seed", "tasks_sha256", "inference_settings", "shared_extra_action_turns", "max_calls",
@@ -170,6 +172,8 @@ def compare_recovery_records(records: Iterable[dict[str, Any]]) -> dict[str, Any
                                        for normal, error in zip(normal_scores, error_scores)]),
             "mean_extra_calls_over_normal": extra_mean("extra_calls_over_normal"),
             "mean_extra_calls_over_oracle": extra_mean("extra_calls_over_oracle"),
+            "error_restart_budget_exhausted_rate": _mean([score.get("budget_exhausted") is True for score in error_scores]),
+            "normal_restart_budget_exhausted_rate": _mean([score.get("budget_exhausted") is True for score in normal_scores]),
         })
     diagnostics["missing_metadata_fields"] = sorted(missing_metadata)
     if missing_metadata:

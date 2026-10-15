@@ -278,30 +278,52 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertEqual(score["error_count"], 0)
         self.assertEqual(score["recovery_error_count"], 0)
         self.assertEqual(score["tool_call_count"], self.recovery.recovery_min_calls)
-        self.assertEqual(score["extra_calls_over_normal"], 1)
+        self.assertEqual(score["extra_calls_over_normal"], 0)
         self.assertEqual(score["extra_calls_over_oracle"], 0)
+        self.assertTrue(score["recovery_error_resolved"])
+        self.assertEqual(score["recovery_resolution_step"], 1)
+        self.assertTrue(score["next_action_correct"])
 
-    def test_creating_target_without_cleanup_is_not_recovery(self):
-        trace, score, _ = self.run_case(self.recovery,
-            [action(entry) for entry in self.recovery.gold_actions] + [finish()],
-            condition="error_restart")
+    def test_finishing_without_repair_is_not_recovery(self):
+        trace, score, _ = self.run_case(self.recovery, [finish()], condition="error_restart")
         self.assertFalse(score["strict_success"])
         self.assertFalse(score["recovery_error_resolved"])
-        self.assertEqual(len(trace["final_state"]["completed_requests"]), 2)
+        self.assertEqual(len(trace["final_state"]["completed_requests"]), 1)
+        self.assertEqual(score["first_error_kind"], "semantic:premature_finish")
 
     def test_reintroducing_bad_saved_record_invalidates_final_recovery(self):
         actions = [action(entry) for entry in self.recovery.recovery_actions]
-        actions += [action(self.recovery.error_injection["action"]), finish()]
+        actions += [action(self.recovery.error_injection["actions"][-1]), finish()]
         _, score, _ = self.run_case(self.recovery, actions, condition="error_restart")
         self.assertFalse(score["recovery_success"])
         self.assertFalse(score["recovery_error_resolved"])
         self.assertGreaterEqual(score["semantic_error_count"], 1)
         self.assertIsNone(score["recovery_stable_resolution_turn"])
 
+    def test_natural_wrong_save_matches_the_injected_error_type(self):
+        """A model's own wrong confirmation in free execution is the injected mistake."""
+        wrong_confirm = action(self.recovery.error_injection["actions"][-1])
+        trace, score, _ = self.run_case(self.execution, [
+            wrong_confirm, action(self.execution.gold_actions[0]), finish(),
+        ])
+        self.assertEqual(trace["events"][0]["semantic_error"], "saved_result_violates_request")
+        self.assertTrue(score["strict_success"])
+        self.assertTrue(score["natural_error"])
+        self.assertTrue(score["natural_error_recovered"])
+        self.assertTrue(score["wrong_save_episode"])
+        self.assertTrue(score["wrong_save_recovered"])
+        self.assertFalse(score["next_action_correct"])
+        self.assertTrue(score["next_action_valid"] is False)
+        self.assertEqual(score["first_error_workflow_stage"], 5)
+        summary = aggregate([{**score, "model_label": "test"}])[0]
+        self.assertEqual(summary["natural_error_recovery_rate"], 1.0)
+        self.assertEqual(summary["wrong_save_recovery_rate"], 1.0)
+        self.assertEqual(summary["first_error_stage_counts"], {"5": 1})
+
     def test_trace_records_metric_and_shared_policy_versions(self):
         trace, score, _ = self.run_case(self.execution,
                                       [action(self.execution.gold_actions[0]), finish()])
-        self.assertEqual(trace["metrics_version"], "workflow-metrics-v3")
+        self.assertEqual(trace["metrics_version"], "workflow-metrics-v4")
         self.assertEqual(trace["agent_policy_version"], "single-action-feedback-v1")
         self.assertEqual(score["metrics_version"], trace["metrics_version"])
 
@@ -328,7 +350,7 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertEqual(summary["mean_error_turn_rate"], 0.5)
         self.assertEqual(summary["pooled_error_turn_rate"], 0.1)
 
-    def recovery_record(self, condition, *, version="workflow-metrics-v3"):
+    def recovery_record(self, condition, *, version="workflow-metrics-v4"):
         oracle = self.recovery.recovery_actions if condition == "error_restart" else self.recovery.gold_actions
         trace, score, _ = self.run_case(self.recovery,
             [action(entry) for entry in oracle] + [finish()], condition=condition)

@@ -12,7 +12,7 @@ from .environment import MockEnvironment
 from .tasks import Task
 
 AGENT_POLICY_VERSION = "single-action-feedback-v1"
-METRICS_VERSION = "workflow-metrics-v3"
+METRICS_VERSION = "workflow-metrics-v4"
 
 
 def _output_feedback(messages: list[dict[str, Any]], output: Any, kind: str) -> None:
@@ -197,9 +197,9 @@ def run_agent(
         )
         event["tool_result"] = result
         event["state_hash_after"] = environment.state_hash()
-        if task.schema_version == "recovery-v2" and condition in {"error_restart", "recovery"}:
-            injected_ids = [item["result"]["saved_result"]["request_id"] for item in trace.get("injected_actions", [])]
-            event["injected_error_present_after"] = any(key in environment.state["completed_requests"] for key in injected_ids)
+        if (task.schema_version == "recovery-v2" and condition in {"error_restart", "recovery"}
+                and hasattr(environment, "injected_error_present")):
+            event["injected_error_present_after"] = environment.injected_error_present()
         try:
             event["success_after_action"] = environment.check_success(task.success_condition)
         except Exception:

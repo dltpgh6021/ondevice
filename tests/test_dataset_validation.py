@@ -113,7 +113,7 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         record = json.loads(output.read_text(encoding="utf-8"))
         self.assertTrue(record["metadata"]["dataset_validation"]["valid"])
         self.assertEqual(record["metadata"]["dataset_language"], "en")
-        self.assertEqual(record["metadata"]["dataset_version"], "workflow-en-v1")
+        self.assertEqual(record["metadata"]["dataset_version"], "workflow-en-v2")
         self.assertEqual(record["task"]["language"], "en")
         self.assertEqual(record["trace"]["dataset_language"], "en")
         self.assertTrue(json.dumps(record["trace"]["initial_messages"], ensure_ascii=False).isascii())
@@ -196,11 +196,10 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         rows[0]["execution_spec"]["candidates"][0]["summary"]["label"] = "키보드 후보"
         self.assert_rejected(rows)
 
-    def test_non_english_stale_record_is_rejected(self) -> None:
+    def test_non_english_injected_record_is_rejected(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery")
-        stale = next(iter(recovery["execution_spec"]["initial_drafts"].values()))
-        stale["result"]["label"] = "잘못 저장된 상품"
+        recovery["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "잘못된_초안"
         self.assert_rejected(rows)
 
     def test_question_must_expose_the_required_request_id(self) -> None:
@@ -266,14 +265,54 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_nonexistent_injected_draft_is_rejected(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery")
-        recovery["error_injection"]["action"]["arguments"]["draft_id"] = "draft_does_not_exist"
+        recovery["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "draft_does_not_exist"
         self.assert_rejected(rows)
 
-    def test_repair_oracle_must_remove_the_injected_wrong_result(self) -> None:
+    def test_repair_oracle_must_replace_the_injected_wrong_result(self) -> None:
         rows = copy.deepcopy(self.rows)
-        recovery = next(row for row in rows if row["task_type"] == "recovery")
-        recovery["recovery_actions"] = copy.deepcopy(recovery["gold_actions"])
-        recovery["recovery_min_calls"] = len(recovery["recovery_actions"])
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
+        recovery["recovery_actions"] = copy.deepcopy(recovery["recovery_actions"][-1:])
+        recovery["recovery_min_calls"] = 1
+        self.assert_rejected(rows)
+
+    def test_error_must_be_saved_for_the_same_request(self) -> None:
+        # The v1 design saved an extra record under another request ID; that is
+        # not a mistake the model can make on its own and must stay rejected.
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
+        recovery["error_injection"] = {"type": "extra_saved_record", "action": recovery["error_injection"]["actions"][-1]}
+        self.assert_rejected(rows)
+
+    def test_injected_error_must_violate_the_request(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
+        recovery["error_injection"]["actions"] = copy.deepcopy(recovery["recovery_actions"])
+        self.assert_rejected(rows)
+
+    def test_free_context_cannot_be_presented_as_model_history(self) -> None:
+        from src.environment import environment_for_task
+        from src.tasks import load_tasks
+
+        tasks = load_tasks(self.task_path)
+        by_id = {task.task_id: task for task in tasks}
+        for horizon in (1, 3, 5):
+            with self.subTest(horizon=horizon):
+                task = by_id[f"shopping_001_h{horizon}"]
+                recovery = by_id[f"recovery_shopping_001_h{horizon}"]
+                free_messages, _ = environment_for_task(task).prepare_condition(task, "free")
+                normal_messages, _ = environment_for_task(recovery).prepare_condition(recovery, "normal_restart")
+                self.assertFalse(any(message.get("tool_calls") for message in free_messages))
+                self.assertEqual(free_messages == normal_messages, horizon == 5)
+
+    def test_condition_separation_is_reported(self) -> None:
+        report = validate_dataset(self.task_path)
+        self.assertEqual(report["condition_separation"]["identical_free_normal_inputs_by_horizon"],
+                         {"1": 0, "3": 0, "5": 20})
+
+    def test_h1_must_offer_a_choice_between_drafts(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        execution = next(row for row in rows if row["task_type"] == "execution" and row["horizon"] == 1)
+        execution["initial_actions"] = execution["initial_actions"][:-2]
         self.assert_rejected(rows)
 
     def test_checkpoint_cannot_start_with_the_task_already_complete(self) -> None:

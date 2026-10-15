@@ -35,9 +35,55 @@ WORKFLOWS = {
 }
 
 
+EXECUTION_PROTOCOL = "execution-v3-provided-context"
+RECOVERY_PROTOCOL = "wrong-saved-result-v3"
+PROVIDED_CONTEXT_HEADER = (
+    "Information already available from earlier lookups for this request "
+    "(tool name and its result, JSON):"
+)
+
+
 def resource_id(spec: dict[str, Any], kind: str, *parts: str) -> str:
     """Stable opaque IDs, identical across the three horizons of one scenario."""
     return f"{kind}_{stable_hash([spec['request_id'], kind, *parts])[:16]}"
+
+
+def candidate_is_eligible(candidate: dict[str, Any], spec: dict[str, Any]) -> bool:
+    summary = candidate["summary"]
+    return all(
+        summary[key[4:]] >= value if key.startswith("min_") else summary[key[4:]] <= value
+        for key, value in spec["request"]["constraints"].items()
+    )
+
+
+def select_target(spec: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Best eligible candidate and its required available option."""
+    eligible = [item for item in spec["candidates"] if candidate_is_eligible(item, spec)]
+    best = min(eligible, key=lambda item: tuple(
+        item["summary"][rule["field"]] * (1 if rule["direction"] == "min" else -1)
+        for rule in spec["request"]["ranking"]))
+    option = next(item for item in best["options"]
+                  if item["available"] and item["kind"] == spec["request"]["required_option_kind"])
+    return best, option
+
+
+def workflow_chain(spec: dict[str, Any], candidate: dict[str, Any], option: dict[str, Any]) -> list[dict[str, Any]]:
+    """The five dependent calls that save one candidate/option pair."""
+    names = WORKFLOWS[spec["domain"]]["names"]
+    arguments = (
+        {"request_id": spec["request_id"]},
+        {"context_id": resource_id(spec, "context")},
+        {"offer_id": resource_id(spec, "offer", candidate["candidate_id"])},
+        {"detail_id": resource_id(spec, "detail", candidate["candidate_id"]), "option_id": option["option_id"]},
+        {"draft_id": resource_id(spec, "draft", candidate["candidate_id"], option["option_id"])},
+    )
+    return [{"tool": name, "arguments": copy.deepcopy(args)} for name, args in zip(names, arguments)]
+
+
+def workflow_stage(domain: str, tool_name: Any) -> int | None:
+    """1-based position of a tool in the five-step workflow; None for auxiliary tools."""
+    names = WORKFLOWS.get(domain, {}).get("names", ())
+    return names.index(tool_name) + 1 if tool_name in names else None
 
 
 def completion_condition_matches(state: dict[str, Any], condition: dict[str, Any]) -> bool:
@@ -152,7 +198,23 @@ class ExecutionEnvironment(MockEnvironment):
 
         return {"ok": True, "completed_requests": copy.deepcopy(self.state["completed_requests"])}
 
+    def _append_call(self, messages: list[dict[str, Any]], call_id: str, action: dict[str, Any],
+                     result: dict[str, Any]) -> None:
+        messages.append({"role": "assistant", "tool_calls": [{"id": call_id, "type": "function", "function": {
+            "name": action["tool"], "arguments": json.dumps(action.get("arguments", {}), ensure_ascii=False),
+        }}]})
+        messages.append({"role": "tool", "tool_call_id": call_id, "name": action["tool"],
+                         "content": json.dumps(result, ensure_ascii=False)})
+
     def prepare_condition(self, task: Task, condition: str) -> tuple[list[dict[str, Any]], str | None]:
+        """Build the starting conversation for one condition.
+
+        execution (free): earlier workflow results are seeded into the state and
+        shown in the user message, never as the model's own past tool calls.
+        recovery (normal/error_restart): the correct prefix is the model's own
+        past tool calls; the error branch additionally continues with a wrong
+        completion that saves a request-violating result for the same request.
+        """
         if condition not in {"free", "normal_restart", "recovery", "error_restart"}:
             raise ValueError(f"unsupported condition: {condition}")
         paired_recovery = task.schema_version == "recovery-v2"
@@ -160,46 +222,60 @@ class ExecutionEnvironment(MockEnvironment):
             raise ValueError("recovery-v2 must use normal_restart or error_restart")
         if not paired_recovery and condition in {"recovery", "error_restart"}:
             raise ValueError("error_restart requires a recovery-v2 fixture")
+        seeds = [] if paired_recovery else list(task.initial_actions or [])
+        history = list(task.initial_actions or []) if paired_recovery else []
+        if condition == "normal_restart" and not paired_recovery:
+            history += task.gold_actions[:task.checkpoint_step]
+        provided = []
+        for action in seeds:
+            result = self.execute(action["tool"], action.get("arguments", {}))
+            if not result["ok"]:
+                raise ValueError(f"{task.task_id}: invalid seeded context: {result}")
+            provided.append({"tool": action["tool"], "result": result})
+        query = task.query
+        if provided:
+            query += "\n\n" + PROVIDED_CONTEXT_HEADER + "\n" + json.dumps(provided, ensure_ascii=False)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT + " Use English for all responses. Return at most one tool call per response; multiple calls in one response are rejected without executing any of them. Invalid output receives only generic format feedback and consumes a response turn. Resource IDs must come from the user context or tool results. Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed."},
-            {"role": "user", "content": task.query},
+            {"role": "user", "content": query},
         ]
-        prefix = list(task.initial_actions or [])
-        if condition == "normal_restart" and not paired_recovery:
-            prefix += task.gold_actions[:task.checkpoint_step]
-        for index, action in enumerate(prefix):
+        for index, action in enumerate(history):
             result = self.execute(action["tool"], action.get("arguments", {}))
             if not result["ok"]:
                 raise ValueError(f"{task.task_id}: invalid provided context: {result}")
-            call_id = f"provided_{index + 1}"
-            messages.append({"role": "assistant", "tool_calls": [{"id": call_id, "type": "function", "function": {
-                "name": action["tool"], "arguments": json.dumps(action.get("arguments", {}), ensure_ascii=False),
-            }}]})
-            messages.append({"role": "tool", "tool_call_id": call_id, "name": action["tool"],
-                             "content": json.dumps(result, ensure_ascii=False)})
+            self._append_call(messages, f"provided_{index + 1}", action, result)
+        remaining = task.gold_actions[task.checkpoint_step:] if condition == "normal_restart" and not paired_recovery else task.gold_actions
         self.preparation_metadata = {
             "checkpoint_state": self.snapshot(), "checkpoint_state_hash": self.state_hash(),
-            "resume_workflow_step": len(prefix), "injected_actions": [],
+            "resume_workflow_step": len(WORKFLOWS[self.spec["domain"]]["names"]) - len(remaining),
+            "context_delivery": "user_message" if provided else ("assistant_history" if history else "none"),
+            "injected_actions": [],
             "fixture_sha256": stable_hash(self.spec),
-            "protocol_version": "extra-saved-record-v2" if paired_recovery else "execution-v2",
-            "initial_artifact_provenance": "provided stale draft in fixture; no natural prior session is implied" if paired_recovery else None,
+            "protocol_version": RECOVERY_PROTOCOL if paired_recovery else EXECUTION_PROTOCOL,
         }
         if condition in {"recovery", "error_restart"}:
             injection = task.error_injection or {}
-            if injection.get("type") != "extra_saved_record":
+            if injection.get("type") != "wrong_saved_result":
                 raise ValueError(f"{task.task_id}: unsupported recovery injection")
-            action = injection["action"]
-            result = self.execute(action["tool"], action["arguments"])
-            if not result.get("ok"):
-                raise ValueError(f"{task.task_id}: injection failed: {result}")
-            call_id = "injected_1"
-            messages.append({"role": "assistant", "tool_calls": [{"id": call_id, "type": "function", "function": {
-                "name": action["tool"], "arguments": json.dumps(action["arguments"], ensure_ascii=False),
-            }}]})
-            messages.append({"role": "tool", "tool_call_id": call_id, "name": action["tool"], "content": json.dumps(result, ensure_ascii=False)})
-            self.preparation_metadata["injected_actions"] = [{"action": copy.deepcopy(action), "result": copy.deepcopy(result)}]
-        remaining = task.gold_actions[task.checkpoint_step:] if condition == "normal_restart" and not paired_recovery else task.gold_actions
+            injected = []
+            for index, action in enumerate(injection["actions"]):
+                result = self.execute(action["tool"], action["arguments"])
+                if not result.get("ok"):
+                    raise ValueError(f"{task.task_id}: injection failed: {result}")
+                self._append_call(messages, f"injected_{index + 1}", action, result)
+                injected.append({"action": copy.deepcopy(action), "result": copy.deepcopy(result)})
+            self.preparation_metadata["injected_actions"] = injected
         return messages, remaining[0]["tool"] if remaining else None
+
+    def injected_wrong_results(self) -> list[dict[str, Any]]:
+        return [copy.deepcopy(item["result"]["saved_result"])
+                for item in self.preparation_metadata.get("injected_actions", [])
+                if "saved_result" in item["result"]]
+
+    def injected_error_present(self) -> bool:
+        """True while a wrong result saved by the injected history is still saved."""
+        saved = self.state["completed_requests"]
+        return any(saved.get(wrong["request_id"]) == wrong for wrong in self.injected_wrong_results())
 
     def result_matches_request(self, completion: dict[str, Any]) -> bool:
         """Judge saved choices using public constraints, not gold action order."""

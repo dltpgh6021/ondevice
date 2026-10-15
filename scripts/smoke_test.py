@@ -89,7 +89,8 @@ def main() -> int:
             if not score["strict_success"] or score["tool_call_count"] != len(oracle) or score.get("recovery_error_count"):
                 print(f"SMOKE TEST FAILED: {task.task_id}/{condition}", file=sys.stderr)
                 return 1
-            if condition == "error_restart" and (score["extra_calls_over_normal"] != 1 or score["extra_calls_over_oracle"] != 0):
+            if condition == "error_restart" and (score["extra_calls_over_oracle"] != 0
+                                                 or score["recovery_error_resolved"] is not True):
                 print(f"SMOKE METRICS FAILED: {task.task_id}", file=sys.stderr)
                 return 1
             recovery_count += 1
