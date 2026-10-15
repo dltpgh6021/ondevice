@@ -8,35 +8,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.tasks import load_tasks, validate_task_set
-from src.execution_validation import validate_execution_tasks
-from src.recovery_validation import validate_recovery_tasks
+from src.dataset_validation import DatasetValidationError, validate_dataset
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate the project task set")
+    parser = argparse.ArgumentParser(description="Validate all 120 English tasks offline (no model/server required)")
     parser.add_argument("--tasks", default=str(ROOT / "tasks" / "tasks.json"))
-    parser.add_argument("--expected-total", type=int, default=120)
-    parser.add_argument("--expected-per-type-horizon", type=int, default=20)
+    parser.add_argument("--output", default=None, help="Optional JSON validation report")
     args = parser.parse_args()
-
-    tasks = load_tasks(args.tasks)
-    summary = validate_task_set(
-        tasks,
-        expected_total=args.expected_total,
-        expected_counts={"execution": 60, "recovery": 60},
-        required_horizons={1, 3, 5},
-        expected_per_type_horizon=args.expected_per_type_horizon,
-        require_pairs=True,
-    )
-    execution_summary = validate_execution_tasks(tasks)
-    recovery_summary = validate_recovery_tasks(tasks)
-    print(json.dumps({"valid": True, **summary,
-                      "pairing_scope": "same original query/goal/clean prefix and matched recovery checkpoints",
-                      "execution_semantics": execution_summary,
-                      "recovery_semantics": recovery_summary},
-                     ensure_ascii=False, indent=2))
-    return 0
+    if args.output and Path(args.output).resolve() == Path(args.tasks).resolve():
+        parser.error("--output must not overwrite the input dataset")
+    try:
+        report = validate_dataset(args.tasks)
+    except DatasetValidationError as exc:
+        report = exc.report
+    serialized = json.dumps(report, ensure_ascii=False, indent=2)
+    if args.output:
+        destination = Path(args.output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(serialized + "\n", encoding="utf-8")
+    print(serialized)
+    return 0 if report["valid"] else 1
 
 
 if __name__ == "__main__":

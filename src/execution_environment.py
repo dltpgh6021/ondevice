@@ -161,7 +161,7 @@ class ExecutionEnvironment(MockEnvironment):
         if not paired_recovery and condition in {"recovery", "error_restart"}:
             raise ValueError("error_restart requires a recovery-v2 fixture")
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT + " Resource IDs must come from the user context or tool results. Use the request ranking rule, including its tie-breaker. Prepared drafts are not final until confirmed."},
+            {"role": "system", "content": SYSTEM_PROMPT + " Use English for all responses. Resource IDs must come from the user context or tool results. Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed."},
             {"role": "user", "content": task.query},
         ]
         prefix = list(task.initial_actions or [])

@@ -4,6 +4,10 @@
 
 **현재 단계:** execution 60개와 recovery 60개를 v2로 재설계했습니다. 회복 비교는 같은 회복 fixture의 `normal_restart`와 `error_restart`를 비교합니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. 워밍업·서버 설정 고정·VRAM·반복 실행 관리는 여전히 본실험 전에 보완해야 합니다.
 
+현재 모델 입력은 **영어**, 데이터 버전은 `workflow-en-v1`입니다. 질문·요청 조건 설명·후보 이름·일정 제목·도구 정의·오류 관측을 영어로 통일했습니다. 실제 실험 명령은 전체 데이터셋 자동 검증을 먼저 통과해야 시작합니다. 팀원용 README는 한국어이며, 생성되는 task 카탈로그는 영어입니다.
+
+이 변경이 Qwen의 영어 성능 우위를 측정한 결과는 아닙니다. 이번 비교에서 언어 조건을 고정하기 위한 선택입니다. 기존 한국어 파일럿 결과와 새 영어 결과는 합치지 않습니다. 모델 파일과 양자화 결과는 그대로 사용할 수 있지만, 영어 조건의 결과는 새로 수집해야 합니다.
+
 이 프로젝트는 FP16·Q8·Q4 모델을 같은 Agent framework와 동일한 mock tool 환경에서 실행합니다. 최종 성공률만 비교하지 않고, 다음 두 현상을 분리해 측정합니다.
 
 1. 모델이 오류를 얼마나 자주 발생시키는가
@@ -73,9 +77,12 @@ v2의 `natural_error`·`first_error_step`는 정답 경로의 순서를 비교�
 ondevice/
 ├─ README.md
 ├─ requirements.txt
+├─ .github/workflows/validate-dataset.yml # GitHub 업로드·PR 시 오프라인 검사
+├─ tests/test_dataset_validation.py # 잘못된 데이터가 거부되는지 회귀 검사
 ├─ tasks/tasks.json
 ├─ src/
 │  ├─ tasks.py          # task 로딩과 검증
+│  ├─ dataset_validation.py # JSON·형식·영어·정보 누락·의미를 묶은 통합 검증
 │  ├─ client.py         # FakeClient와 llama.cpp client
 │  ├─ environment.py    # 결정론적 mock tool과 상태 관리
 │  ├─ execution_environment.py # 리소스 의존성이 있는 execution-v2 도구
@@ -89,6 +96,7 @@ ondevice/
 └─ scripts/
    ├─ smoke_test.py     # 모델 없이 전체 흐름 검사
    ├─ validate_tasks.py  # task 중복·누락·대응 관계 검증
+   ├─ build_tasks.py     # 두 영어 task 유형과 카탈로그를 함께 검증·재생성
    ├─ build_execution_tasks.py # 20개 시나리오 정의와 JSON 일치 검사
    ├─ build_recovery_tasks.py  # execution과 대응하는 회복 fixture 생성·검사
    ├─ run_experiment.py # 실제 llama.cpp 실행
@@ -155,7 +163,36 @@ WSL/macOS에서는 `python scripts/validate_tasks.py`를 사용합니다. `valid
 - 잘못된 추가 결과를 남기면 실패, 삭제를 먼저/나중에 해도 성공
 - 복구 경로의 부분 생략 1,620개에서 우회 성공 없음, 정상/오류 정답 재생 120회
 
-이 검사는 정답 부분 경로와 리소스 의존성을 검사합니다. 임의의 모든 도구 인자·행동열을 전수 탐색한 검사는 아닙니다. 생성기 일치는 `python scripts/build_execution_tasks.py --check`와 `python scripts/build_recovery_tasks.py --check`로 확인합니다. 이 슬래시 경로는 Windows CMD/PowerShell·WSL·macOS에서 모두 사용할 수 있습니다.
+추가 검증 항목은 JSON의 중복 키·NaN/Infinity·잘못된 자료형, 빈 질문, 질문에 필요한 요청 ID 누락, 정답 후보/옵션/견적 ID 유출, 기본 시나리오 내용 중복, 생성기 원본과의 문구·조건 불일치입니다. 숫자 `1`을 `true`나 문자열 `"1"`로 바꾸는 경우도 통과하지 못합니다.
+
+모델에 제공되는 시스템/사용자 메시지·도구 정의·주입된 관측·정답 경로의 후속 반환값까지 180개 조건에서 검사합니다. 영어 데이터는 `language=en`, `dataset_version=workflow-en-v1`로 표시하며 비ASCII 문자열 혼입을 차단합니다. 이 검사는 영어 문장의 논리적 정확성을 증명하는 언어 판별기는 아니므로 시나리오 내용은 사람이 검토해야 합니다.
+
+독립 검증과 보고서 저장, 결함 회귀 검사는 다음과 같습니다. Windows CMD/PowerShell·WSL·macOS에서 같은 슬래시 경로를 사용할 수 있습니다.
+
+```text
+python scripts/validate_tasks.py --output results/dataset_validation_en.json
+python -m unittest discover -s tests -v
+```
+
+성공 시 `valid: true`와 오류 없는 보고서를 출력합니다. 실패 시 `valid: false`, 실패한 `stage`, `errors`를 출력하고 종료 코드 1로 끝납니다. 보고서의 `dataset_sha256`은 내용 기준, `tasks_file_sha256`은 파일 바이트 기준 hash입니다. `results/` 보고서는 Git에 올리지 않고 결과 공유 폴더에 함께 보관합니다.
+
+`run_experiment.py`도 같은 전체 검증을 서버 접속 전에 자동 수행합니다. `--limit 1`을 넣어도 검증은 120개 전체에 적용합니다. 실패하면 모델을 실행하지 않습니다. 실행 metadata에는 데이터 언어·버전·내용 hash·검증기 버전이 남습니다. 입력 task 파일을 결과 파일로 덮어쓰는 `--output` 지정도 거부합니다.
+
+GitHub용 `.github/workflows/validate-dataset.yml`도 추가했습니다. 저장소에 업로드된 후 push·pull request 때 Python 표준 라이브러리만으로 데이터 검증·생성기 일치·회귀 검사·smoke test를 수행하도록 설정되어 있습니다. 실제 GitHub 실행 성공은 업로드 후 Actions 탭에서 확인합니다.
+
+이 검사는 정답 부분 경로와 리소스 의존성을 검사합니다. 임의의 모든 도구 인자·행동열을 전수 탐색한 검사는 아닙니다. 기존 두 생성기의 `--check`도 사용할 수 있으며, 두 유형을 함께 확인하는 명령은 `python scripts/build_tasks.py --check`입니다.
+
+### task를 수정할 때
+
+`tasks/tasks.json`은 생성된 파일입니다. 질문·조건은 `scripts/build_execution_tasks.py`, 회복 오류 설계는 `scripts/build_recovery_tasks.py`에서 수정한 뒤 다음을 실행합니다.
+
+```text
+python scripts/build_tasks.py --write
+python scripts/validate_tasks.py
+python -m unittest discover -s tests -v
+```
+
+`--write`는 생성한 120개를 메모리에서 검증한 뒤 JSON과 두 카탈로그를 함께 갱신합니다. JSON만 직접 바꾸면 생성기 원본과 다르다는 이유로 실험이 중단됩니다. 연구 조건이 바뀌면 데이터 버전을 갱신하고 결과를 구분해 보관합니다.
 
 ### 2. llama.cpp 준비
 
@@ -642,9 +679,9 @@ v2의 선택적 조회와 유효한 다른 행동 순서는 오류가 아닙니�
 `gold_actions`는 정상 분기의 남은 호출이고, `recovery_actions`는 잘못된 기록 삭제가 포함된 복구 경로입니다. `initial_actions`는 미리 제공할 정상 기록입니다. 회복 task의 `checkpoint_step=0`은 그 남은 경로에서 추가 재생하지 않는다는 뜻입니다. 실제 전체 작업 흐름의 checkpoint 깊이는 `resume_workflow_step=len(initial_actions)`이며 h1·h3·h5에서 각각 4·2·0입니다.
 
 ```text
-python scripts/build_execution_tasks.py --check
-python scripts/build_recovery_tasks.py --check
+python scripts/build_tasks.py --check
 python scripts/validate_tasks.py
+python -m unittest discover -s tests -v
 python scripts/smoke_test.py
 ```
 

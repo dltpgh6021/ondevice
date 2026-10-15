@@ -167,6 +167,8 @@ def run_batch(
                     "domain": task.domain,
                     "task_type": task.task_type,
                     "schema_version": task.schema_version,
+                    "language": task.language,
+                    "dataset_version": task.dataset_version,
                     "initial_actions": task.initial_actions,
                     "horizon": task.horizon,
                     "checkpoint_step": task.checkpoint_step,

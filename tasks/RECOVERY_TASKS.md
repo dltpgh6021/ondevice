@@ -1,57 +1,58 @@
-# Recovery task v2: 20개 시나리오 × 1·3·5단계
+# Recovery tasks v2: 20 scenarios x horizons 1, 3, and 5
 
-execution-v2 60개 각각과 원래 질문·정답·정상 작업 기록이 같은 회복 fixture 60개입니다.
-원래 질문의 ‘저장된 결과는 요청에 맞는 한 개만 남겨줘’ 조건을 두 분기에서 동일하게 사용합니다.
-오류 내용이나 정답을 별도의 사용자 메시지로 알려주지 않습니다.
+The 60 recovery fixtures retain the original question, target, and correct history of their matched execution-v2 tasks.
+Both branches use the original requirement to leave exactly one saved result satisfying the request.
+No extra user message reveals the error or the reference answer.
 
-| Horizon 표기 | 정상 분기 남은 최소 호출 | 오류 분기 남은 최소 호출 |
+| Nominal horizon | Minimum normal calls | Minimum repair calls |
 |---|---|---|
 | 1 | 1 | 2 |
 | 3 | 3 | 4 |
 | 5 | 5 | 6 |
 
-horizon은 정상 작업에 남은 의존 단계 수입니다. 오류 분기는 잘못된 저장 결과 삭제에 1회가 더 필요합니다.
-recovery_min_calls와 normal_remaining_calls를 구분해 기록하며 추가 호출 비용은 각 분기의 최소 호출을 기준으로 해석합니다.
+Horizon counts remaining normal workflow dependencies. The error branch additionally needs one cleanup call.
+Record normal_remaining_calls and recovery_min_calls separately.
 
-## 같은 checkpoint에서 두 분기 비교
+## Matched checkpoint branches
 
-공통 시작 상태에는 원래 요청과 무관한 오래된 draft 하나가 가져온 자료로 존재합니다. 정상 경로에서 필요한 target draft를 미리 생성하지는 않습니다.
-initial_actions를 동일하게 재생한 지점이 checkpoint입니다. 정상 분기는 그대로 시작하고, 오류 분기는 오래된 draft를 확정하는 도구 호출 1회와 실제 결과를 대화 기록에 추가합니다.
-오래된 draft는 조건에 맞지 않는 후보와 요구되지 않은 옵션으로 만들며, 원래 요청과 다른 불투명 request_id를 사용합니다.
-따라서 올바른 원래 요청을 확정해도 오래된 결과가 남습니다. discard_saved_result로 잘못된 기록을 삭제해야 최종 상태가 성공 조건과 일치합니다.
-두 분기는 같은 checkpoint·정상 기록·도구·원래 질문을 공유합니다. 오류 호출 및 관측은 오류를 드러내기 위해 오류 분기에만 추가됩니다.
-60개 fixture를 normal_restart와 error_restart로 각각 실행하므로 모델 하나당 회복 비교 실행은 120회입니다.
+A stale draft for another request is a supplied artifact in the common starting fixture. It does not pre-create the target draft.
+Replay the same initial_actions to reach the common checkpoint. The normal branch starts there. The error branch additionally confirms the stale draft and appends the real assistant call and tool result to the history.
+The stale draft contains an ineligible candidate and an undesired option under a distinct opaque request_id.
+Saving the correct target does not remove the stale result. The agent must discard_saved_result using the stale request_id. Cleanup before or after the normal workflow is valid.
+Both branches share the checkpoint, correct history, tool schemas, original question, final goal, and response-turn budget. Only the error branch receives the injected saved result and its observable history.
+One model therefore needs 120 recovery continuations: 60 normal_restart and 60 error_restart.
 
-## 시나리오 목록
+## Scenario list
 
-각 행마다 `_h1`, `_h3`, `_h5`에 대응하는 회복 task 3개가 있습니다.
+Every base scenario has matched h1, h3, and h5 recovery fixtures.
 
-| 원래 기본 시나리오 | 분야 | 공통 주입 오류 |
+| Base scenario | Domain | Common injected error |
 |---|---|---|
-| shopping_001 | shopping | 조건을 위반한 오래된 결과의 추가 저장 |
-| shopping_002 | shopping | 조건을 위반한 오래된 결과의 추가 저장 |
-| shopping_003 | shopping | 조건을 위반한 오래된 결과의 추가 저장 |
-| shopping_004 | shopping | 조건을 위반한 오래된 결과의 추가 저장 |
-| shopping_005 | shopping | 조건을 위반한 오래된 결과의 추가 저장 |
-| schedule_001 | schedule | 조건을 위반한 오래된 결과의 추가 저장 |
-| schedule_002 | schedule | 조건을 위반한 오래된 결과의 추가 저장 |
-| schedule_003 | schedule | 조건을 위반한 오래된 결과의 추가 저장 |
-| schedule_004 | schedule | 조건을 위반한 오래된 결과의 추가 저장 |
-| schedule_005 | schedule | 조건을 위반한 오래된 결과의 추가 저장 |
-| travel_001 | travel | 조건을 위반한 오래된 결과의 추가 저장 |
-| travel_002 | travel | 조건을 위반한 오래된 결과의 추가 저장 |
-| travel_003 | travel | 조건을 위반한 오래된 결과의 추가 저장 |
-| travel_004 | travel | 조건을 위반한 오래된 결과의 추가 저장 |
-| travel_005 | travel | 조건을 위반한 오래된 결과의 추가 저장 |
-| place_001 | place | 조건을 위반한 오래된 결과의 추가 저장 |
-| place_002 | place | 조건을 위반한 오래된 결과의 추가 저장 |
-| place_003 | place | 조건을 위반한 오래된 결과의 추가 저장 |
-| place_004 | place | 조건을 위반한 오래된 결과의 추가 저장 |
-| place_005 | place | 조건을 위반한 오래된 결과의 추가 저장 |
+| shopping_001 | shopping | Extra saved record violating the request |
+| shopping_002 | shopping | Extra saved record violating the request |
+| shopping_003 | shopping | Extra saved record violating the request |
+| shopping_004 | shopping | Extra saved record violating the request |
+| shopping_005 | shopping | Extra saved record violating the request |
+| schedule_001 | schedule | Extra saved record violating the request |
+| schedule_002 | schedule | Extra saved record violating the request |
+| schedule_003 | schedule | Extra saved record violating the request |
+| schedule_004 | schedule | Extra saved record violating the request |
+| schedule_005 | schedule | Extra saved record violating the request |
+| travel_001 | travel | Extra saved record violating the request |
+| travel_002 | travel | Extra saved record violating the request |
+| travel_003 | travel | Extra saved record violating the request |
+| travel_004 | travel | Extra saved record violating the request |
+| travel_005 | travel | Extra saved record violating the request |
+| place_001 | place | Extra saved record violating the request |
+| place_002 | place | Extra saved record violating the request |
+| place_003 | place | Extra saved record violating the request |
+| place_004 | place | Extra saved record violating the request |
+| place_005 | place | Extra saved record violating the request |
 
-## 해석 범위
+## Interpretation and limits
 
-하나의 고정 오류 유형(추가 저장 기록)과 통제된 대화 기록을 이용한 실험입니다. 모든 오류 유형이나 자연 발생 오류의 회복 능력으로 일반화하지 않습니다.
-모델은 기록의 오류를 알아차리고 삭제할 수 있는지 평가받습니다. 도구 오류 예외 처리·잘못된 인자 수정 등 다른 회복 유형은 이번 fixture에 포함하지 않습니다.
-회복 손실은 같은 회복 fixture의 normal_restart 성공률과 error_restart 성공률 사이에서 계산합니다. execution 자유 수행과 직접 빼지 않습니다.
-20개 기본 시나리오의 세 horizon은 대응 조건입니다. 60개의 독립 시나리오처럼 취급하지 않습니다.
+This is one controlled error family: an extra saved result for a wrong request. Do not generalize to every error type or naturally generated agent failure.
+The model must recognize and remove the erroneous record. Argument correction, exception handling, and other recovery mechanisms are outside this fixture family.
+Compute recovery penalty only between normal_restart and error_restart of the same recovery fixture, not by subtracting recovery success from execution free success.
+The horizon conditions are matched observations of 20 base scenarios, not 60 independent scenarios.
+All supplied questions, request descriptions, candidate labels, titles, tool schemas, and injected observations use English. Metadata records language=en and dataset_version=workflow-en-v1.

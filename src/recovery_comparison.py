@@ -11,6 +11,7 @@ PROTOCOL = "extra-saved-record-v2"
 CONFIG_FIELDS = (
     "model_sha256", "model_label", "hostname", "platform", "processor", "machine",
     "seed", "tasks_sha256", "inference_settings", "shared_extra_action_turns", "max_calls",
+    "dataset_language", "dataset_version", "dataset_sha256",
 )
 
 

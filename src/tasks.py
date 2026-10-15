@@ -30,6 +30,8 @@ class Task:
     recovery_actions: list[dict[str, Any]] | None = None
     normal_remaining_calls: int | None = None
     recovery_min_calls: int | None = None
+    language: str = "unspecified"
+    dataset_version: str = "legacy"
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Task":
@@ -52,6 +54,8 @@ class Task:
             recovery_actions=list(data.get("recovery_actions", [])),
             normal_remaining_calls=int(data["normal_remaining_calls"]) if "normal_remaining_calls" in data else None,
             recovery_min_calls=int(data["recovery_min_calls"]) if "recovery_min_calls" in data else None,
+            language=str(data.get("language", "unspecified")),
+            dataset_version=str(data.get("dataset_version", "legacy")),
         )
         validate_task(task)
         return task

@@ -40,9 +40,9 @@ def scenario(domain: str, index: int) -> dict:
     request_id = f"request_{stable_hash(base_id)[:12]}"
     if domain == "shopping":
         label, category, budget, minimum = [
-            ("키보드", "keyboard", 100, 4.0), ("마우스", "mouse", 60, 4.2),
-            ("헤드셋", "headset", 150, 4.3), ("웹캠", "webcam", 90, 4.1),
-            ("USB 허브", "usb_hub", 70, 4.0),
+            ("Keyboard", "keyboard", 100, 4.0), ("Mouse", "mouse", 60, 4.2),
+            ("Headset", "headset", 150, 4.3), ("Webcam", "webcam", 90, 4.1),
+            ("USB hub", "usb_hub", 70, 4.0),
         ][index]
         cheap_first = index in (1, 4)
         constraints = {"max_price": budget, "min_rating": minimum}
@@ -55,17 +55,17 @@ def scenario(domain: str, index: int) -> dict:
         ]
         option_kinds = ["standard_delivery", "express_delivery"]
         required = option_kinds[index % 2]
-        rule = "가격이 가장 낮은 상품을 고르고, 동률이면 평점이 높은 상품" if cheap_first else "평점이 가장 높은 상품을 고르고, 동률이면 가격이 낮은 상품"
-        description = f"{label} 중 기본 가격 {budget} 이하이고 평점 {minimum} 이상인 상품에서 {rule}을 선택한다. 배송 방식은 {required}로 지정한다."
+        rule = "the lowest-priced product, breaking ties by the highest rating" if cheap_first else "the highest-rated product, breaking ties by the lowest price"
+        description = f"For the {category} category, consider products with a base price of at most {budget} and a rating of at least {minimum}. Select {rule}. Use the {required} delivery option."
         result_fields = {"category": category, "quantity": 1, "delivery_city": "Seoul"}
-        goal = "구매 요청의 조건에 맞는 상품과 배송 방식을 선택해 구매 항목을 확정·저장해줘."
+        goal = "Select the product and delivery option that satisfy the purchase request, then confirm and save the purchase item."
     elif domain == "schedule":
         title, date, minimum_capacity, earliest, latest = [
-            ("팀 회의", "2026-10-20", 4, 9, 17),
-            ("논문 읽기 모임", "2026-10-21", 3, 10, 18),
-            ("실험 점검 회의", "2026-10-22", 5, 9, 16),
-            ("프로젝트 발표 연습", "2026-10-23", 5, 13, 19),
-            ("주간 회고", "2026-10-24", 4, 11, 18),
+            ("Team meeting", "2026-10-20", 4, 9, 17),
+            ("Paper reading group", "2026-10-21", 3, 10, 18),
+            ("Experiment review meeting", "2026-10-22", 5, 9, 16),
+            ("Project presentation rehearsal", "2026-10-23", 5, 13, 19),
+            ("Weekly retrospective", "2026-10-24", 4, 11, 18),
         ][index]
         constraints = {"min_capacity": minimum_capacity, "min_start_hour": earliest, "max_start_hour": latest}
         walk_first = index in (1, 3)
@@ -78,11 +78,11 @@ def scenario(domain: str, index: int) -> dict:
         ]
         option_kinds = ["in_person", "hybrid"]
         required = option_kinds[index % 2]
-        rule = "도보 이동시간이 가장 짧은 시간대, 동률이면 시작 시간이 빠른 시간대" if walk_first else "시작 시간이 가장 빠른 시간대, 동률이면 도보 이동시간이 짧은 시간대"
-        description = f"{date}에 '{title}'를 1시간 등록한다. 정원 {minimum_capacity} 이상, 시작 시각 {earliest}시 이상 {latest}시 이하인 빈 시간대 중 {rule}를 선택한다. 진행 방식은 {required}이다."
+        rule = "the slot with the shortest walking time, breaking ties by the earliest start hour" if walk_first else "the slot with the earliest start hour, breaking ties by the shortest walking time"
+        description = f"Schedule '{title}' for one hour on {date}. Consider available slots with capacity of at least {minimum_capacity} and a start hour from {earliest} through {latest}, inclusive. Select {rule}. Use the {required} meeting format."
         result_fields = {"title": title, "date": date, "duration_min": 60, "city": "Seoul"}
         label = title
-        goal = "일정 요청에 적힌 날짜·시간·정원 조건과 진행 방식에 맞는 일정을 확정·저장해줘."
+        goal = "Confirm and save an event that satisfies the date, start-hour, capacity, and meeting-format requirements in the scheduling request."
     elif domain == "travel":
         origin, destination, date, budget, earliest = [
             ("Seoul", "Busan", "2026-10-20", 100, 8),
@@ -102,16 +102,16 @@ def scenario(domain: str, index: int) -> dict:
         ]
         option_kinds = ["refundable", "nonrefundable"]
         required = option_kinds[index % 2]
-        rule = "기본 운임이 가장 낮은 이동편, 동률이면 이동시간이 짧은 이동편" if cheap_first else "이동시간이 가장 짧은 이동편, 동률이면 기본 운임이 낮은 이동편"
-        description = f"{date} {origin}에서 {destination}으로 간다. 기본 운임 {budget} 이하, 출발 시각 {earliest}시 이상 {earliest + 4}시 이하인 후보 중 {rule}을 선택한다. 운임 옵션은 {required}이다."
+        rule = "the option with the lowest base fare, breaking ties by the shortest travel duration" if cheap_first else "the option with the shortest travel duration, breaking ties by the lowest base fare"
+        description = f"Travel from {origin} to {destination} on {date}. Consider options with a base fare of at most {budget} and a departure hour from {earliest} through {earliest + 4}, inclusive. Select {rule}. Use the {required} fare option."
         result_fields = {"origin": origin, "destination": destination, "date": date, "passengers": 1}
-        label = f"{origin}→{destination}"
-        goal = "이동 요청의 구간·날짜·기본 운임·출발 시각 조건과 운임 옵션에 맞는 여행 일정을 확정·저장해줘."
+        label = f"{origin} to {destination}"
+        goal = "Confirm and save an itinerary that satisfies the route, date, base-fare, departure-hour, and fare-option requirements in the travel request."
     else:
         label, category, city, budget, max_walk = [
-            ("박물관", "museum", "Seoul", 30, 25), ("카페", "cafe", "Seoul", 20, 20),
-            ("식당", "restaurant", "Busan", 40, 30), ("공원", "park", "Seoul", 10, 25),
-            ("전시관", "gallery", "Busan", 25, 20),
+            ("Museum", "museum", "Seoul", 30, 25), ("Cafe", "cafe", "Seoul", 20, 20),
+            ("Restaurant", "restaurant", "Busan", 40, 30), ("Park", "park", "Seoul", 10, 25),
+            ("Gallery", "gallery", "Busan", 25, 20),
         ][index]
         constraints = {"max_fee": budget, "max_walking_min": max_walk}
         walk_first = index in (1, 3)
@@ -124,10 +124,10 @@ def scenario(domain: str, index: int) -> dict:
         ]
         option_kinds = ["indoor", "outdoor"]
         required = option_kinds[index % 2]
-        rule = "도보 이동시간이 가장 짧은 장소, 동률이면 평점이 높은 장소" if walk_first else "평점이 가장 높은 장소, 동률이면 도보 이동시간이 짧은 장소"
-        description = f"{city}의 {label} 중 기본 이용료 {budget} 이하, 도보 이동시간 {max_walk}분 이하인 후보에서 {rule}를 선택한다. 방문 구역은 {required}로 지정한다."
+        rule = "the place with the shortest walking time, breaking ties by the highest rating" if walk_first else "the highest-rated place, breaking ties by the shortest walking time"
+        description = f"Find a {category} in {city}. Consider candidates with a base admission fee of at most {budget} and a walking time of at most {max_walk} minutes. Select {rule}. Choose the {required} visit area."
         result_fields = {"city": city, "category": category, "date": f"2026-10-{20 + index}", "visitors": 1}
-        goal = "방문 요청의 지역·이용료·이동시간 조건과 방문 구역에 맞는 장소 방문 계획을 확정·저장해줘."
+        goal = "Confirm and save a visit plan that satisfies the location, admission-fee, walking-time, and visit-area requirements in the visit request."
 
     # Vary the violated constraint and include primary-score ties that require
     # the stated secondary rule, instead of repeating one trivial selection.
@@ -162,7 +162,7 @@ def scenario(domain: str, index: int) -> dict:
 
     request = {
         "description": description, "constraints": constraints, "ranking": ranking,
-        "ranking_note": "Apply all constraints first, then compare ranking fields in listed order. All ranked scores in this fixture are distinct.",
+        "ranking_note": "Apply all constraints first. Compare ranking fields in listed order, using later fields to break ties. The full ranking tuple uniquely selects one eligible candidate.",
         "required_option_kind": required, "result_fields": result_fields,
     }
     candidates = []
@@ -174,11 +174,11 @@ def scenario(domain: str, index: int) -> dict:
         if (index + number) % 2:
             options.reverse()
         label_number = (number + index + list(WORKFLOWS).index(domain)) % 3
-        candidates.append({"candidate_id": candidate_id, "summary": {"label": f"{label} 후보 {chr(65 + label_number)}", **value}, "options": options})
+        candidates.append({"candidate_id": candidate_id, "summary": {"label": f"{label} candidate {chr(65 + label_number)}", **value}, "options": options})
     rotation = index % len(candidates)
     candidates = candidates[rotation:] + candidates[:rotation]
     return {"base_id": base_id, "domain": domain, "request_id": request_id,
-            "query": f"요청 ID {request_id}. {goal} 이미 제공된 도구 결과가 있으면 이어서 진행하고, 저장된 결과는 요청에 맞는 한 개만 남겨줘.",
+            "query": f"Request ID: {request_id}. {goal} Continue from any tool results already provided. When finished, the entire saved result set must contain only one record: the correct result for this request.",
             "request": request, "candidates": candidates}
 
 
@@ -204,6 +204,7 @@ def build_execution_tasks() -> list[dict]:
                 tasks.append({
                     "id": f"{case['base_id']}_h{horizon}", "base_id": case["base_id"],
                     "domain": domain, "task_type": "execution", "schema_version": "execution-v2",
+                    "language": "en", "dataset_version": "workflow-en-v1",
                     "horizon": horizon, "query": case["query"], "initial_actions": chain[:5 - horizon],
                     "gold_actions": chain[5 - horizon:], "checkpoint_step": {1: 0, 3: 1, 5: 2}[horizon],
                     "success_condition": {"completed_request_equals": target}, "execution_spec": spec,
@@ -213,27 +214,28 @@ def build_execution_tasks() -> list[dict]:
 
 def catalog_markdown() -> str:
     lines = [
-        "# Execution task v2: 20개 시나리오 × 1·3·5단계", "",
-        "60개는 서로 독립인 60개 질문이 아니라, 같은 20개 시나리오의 시작 정보 3조건입니다.",
-        "각 기본 질문은 동일하고, 짧은 조건에는 정상적으로 미리 수행된 도구 결과가 대화 기록으로 제공됩니다.", "",
-        "| Horizon | 미리 제공된 결과 | 모델이 수행하는 필수 호출 |", "|---|---|---|",
-        "| 1 | 요청·후보·상세·준비 결과 | 확정 |",
-        "| 3 | 요청·후보 결과 | 상세 확인 → 준비 → 확정 |",
-        "| 5 | 없음 | 요청 확인 → 후보 조회 → 상세 확인 → 준비 → 확정 |", "",
-        "준비 단계에서 생성된 draft_id가 없으면 확정할 수 없습니다. 조회용 식별자 역시 앞 도구에서 발급되어야 존재합니다.",
-        "각 조건의 도구 목록은 동일합니다. 완료 후 inspect_state를 호출해도 최종 성공 판정은 유지됩니다.", "",
-        "아래 각 행에 `_h1`, `_h3`, `_h5`가 붙은 task 3개가 있습니다. 실제 질문·도구 결과·정답은 tasks.json에 저장됩니다.", "",
-        "| 기본 ID | 요청 내용 |", "|---|---|",
+        "# Execution tasks v2: 20 scenarios x horizons 1, 3, and 5", "",
+        "The 60 tasks are three starting-information conditions for the same 20 scenarios, rather than 60 independent questions.",
+        "Each scenario keeps the same original question. Shorter conditions provide correctly completed tool calls and their results in the conversation history.", "",
+        "| Horizon | Results provided before the model starts | Required model calls |", "|---|---|---|",
+        "| 1 | Request, candidates, details, and draft | Confirm |",
+        "| 3 | Request and candidates | Read details -> prepare -> confirm |",
+        "| 5 | None | Read request -> find candidates -> read details -> prepare -> confirm |", "",
+        "Confirmation requires an existing draft_id created by preparation. Lookup identifiers must likewise be issued by the preceding tools before those resources exist.",
+        "All horizons expose the same tool list. Calling inspect_state after completion does not change the final success judgment.", "",
+        "Every row below has three tasks with the suffixes `_h1`, `_h3`, and `_h5`. Actual questions, tool results, and reference answers are stored in tasks.json.", "",
+        "| Base ID | Request |", "|---|---|",
     ]
     for domain in WORKFLOWS:
         for index in range(5):
             case = scenario(domain, index)
             lines.append(f"| {case['base_id']} | {case['request']['description']} |")
-    lines += ["", "## 해석 범위", "",
-              "이 설계는 같은 작업 흐름의 남은 의존 단계 수를 통제합니다. 시작 시 제공되는 정보량과 완료된 작업도 달라지므로, 일반적인 현실 과제의 길이만 바꾼 실험이라고 해석하지 않습니다.",
-              "h1은 올바르게 준비된 결과를 확정하는 조건이므로 후보 선택 능력은 주로 h3·h5에서 비교합니다. 20개 기본 시나리오를 분석 단위로 보고 각 h조건은 대응 비교합니다.",
-              "현재 4개 분야 모두 같은 요청→조회→상세→준비→확정 구조를 사용합니다. 다양한 Agent 행동 전반에 일반화하려면 후속 데이터 확장이 필요합니다.",
-              "execution-v2는 오류를 주입하지 않습니다. 대응 recovery-v2는 같은 원래 질문과 목표를 사용하며, 회복 비교는 그 fixture의 normal_restart와 error_restart 사이에서만 수행합니다. free 성공률에서 회복 성공률을 직접 빼지 않습니다.", ""]
+    lines += ["", "## Interpretation and limits", "",
+              "This design controls the number of remaining dependent calls in the same workflow. Starting information and previously completed work also differ, so it does not isolate only the length of a general real-world task.",
+              "At h1 the model confirms an already correct draft; candidate-selection ability is therefore compared mainly at h3 and h5. Treat the 20 base scenarios as the analysis units and compare horizon conditions as matched observations.",
+              "All four domains currently use the same read-request -> search -> details -> prepare -> confirm workflow. Broader claims about agent behavior require more diverse tasks.",
+              "execution-v2 does not inject errors. Matched recovery-v2 tasks keep the same original question and goal; compare recovery only between normal_restart and error_restart within the matched fixture. Do not directly subtract recovery success from free-execution success.",
+              "The model-facing dataset language is English, recorded as language=en and dataset_version=workflow-en-v1.", ""]
     return "\n".join(lines)
 
 
@@ -242,7 +244,7 @@ def main() -> int:
     parser.add_argument("--tasks", default=str(ROOT / "tasks" / "tasks.json"))
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
-    mode.add_argument("--emit-json", action="store_true", help="Print regenerated execution + unchanged legacy recovery JSON")
+    mode.add_argument("--emit-json", action="store_true", help="Print regenerated execution + unchanged recovery JSON")
     mode.add_argument("--emit-doc", action="store_true", help="Print the scenario catalog")
     args = parser.parse_args()
     if args.emit_doc:

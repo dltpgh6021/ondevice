@@ -1,45 +1,46 @@
-# Execution task v2: 20개 시나리오 × 1·3·5단계
+# Execution tasks v2: 20 scenarios x horizons 1, 3, and 5
 
-60개는 서로 독립인 60개 질문이 아니라, 같은 20개 시나리오의 시작 정보 3조건입니다.
-각 기본 질문은 동일하고, 짧은 조건에는 정상적으로 미리 수행된 도구 결과가 대화 기록으로 제공됩니다.
+The 60 tasks are three starting-information conditions for the same 20 scenarios, rather than 60 independent questions.
+Each scenario keeps the same original question. Shorter conditions provide correctly completed tool calls and their results in the conversation history.
 
-| Horizon | 미리 제공된 결과 | 모델이 수행하는 필수 호출 |
+| Horizon | Results provided before the model starts | Required model calls |
 |---|---|---|
-| 1 | 요청·후보·상세·준비 결과 | 확정 |
-| 3 | 요청·후보 결과 | 상세 확인 → 준비 → 확정 |
-| 5 | 없음 | 요청 확인 → 후보 조회 → 상세 확인 → 준비 → 확정 |
+| 1 | Request, candidates, details, and draft | Confirm |
+| 3 | Request and candidates | Read details -> prepare -> confirm |
+| 5 | None | Read request -> find candidates -> read details -> prepare -> confirm |
 
-준비 단계에서 생성된 draft_id가 없으면 확정할 수 없습니다. 조회용 식별자 역시 앞 도구에서 발급되어야 존재합니다.
-각 조건의 도구 목록은 동일합니다. 완료 후 inspect_state를 호출해도 최종 성공 판정은 유지됩니다.
+Confirmation requires an existing draft_id created by preparation. Lookup identifiers must likewise be issued by the preceding tools before those resources exist.
+All horizons expose the same tool list. Calling inspect_state after completion does not change the final success judgment.
 
-아래 각 행에 `_h1`, `_h3`, `_h5`가 붙은 task 3개가 있습니다. 실제 질문·도구 결과·정답은 tasks.json에 저장됩니다.
+Every row below has three tasks with the suffixes `_h1`, `_h3`, and `_h5`. Actual questions, tool results, and reference answers are stored in tasks.json.
 
-| 기본 ID | 요청 내용 |
+| Base ID | Request |
 |---|---|
-| shopping_001 | 키보드 중 기본 가격 100 이하이고 평점 4.0 이상인 상품에서 평점이 가장 높은 상품을 고르고, 동률이면 가격이 낮은 상품을 선택한다. 배송 방식은 standard_delivery로 지정한다. |
-| shopping_002 | 마우스 중 기본 가격 60 이하이고 평점 4.2 이상인 상품에서 가격이 가장 낮은 상품을 고르고, 동률이면 평점이 높은 상품을 선택한다. 배송 방식은 express_delivery로 지정한다. |
-| shopping_003 | 헤드셋 중 기본 가격 150 이하이고 평점 4.3 이상인 상품에서 평점이 가장 높은 상품을 고르고, 동률이면 가격이 낮은 상품을 선택한다. 배송 방식은 standard_delivery로 지정한다. |
-| shopping_004 | 웹캠 중 기본 가격 90 이하이고 평점 4.1 이상인 상품에서 평점이 가장 높은 상품을 고르고, 동률이면 가격이 낮은 상품을 선택한다. 배송 방식은 express_delivery로 지정한다. |
-| shopping_005 | USB 허브 중 기본 가격 70 이하이고 평점 4.0 이상인 상품에서 가격이 가장 낮은 상품을 고르고, 동률이면 평점이 높은 상품을 선택한다. 배송 방식은 standard_delivery로 지정한다. |
-| schedule_001 | 2026-10-20에 '팀 회의'를 1시간 등록한다. 정원 4 이상, 시작 시각 9시 이상 17시 이하인 빈 시간대 중 시작 시간이 가장 빠른 시간대, 동률이면 도보 이동시간이 짧은 시간대를 선택한다. 진행 방식은 in_person이다. |
-| schedule_002 | 2026-10-21에 '논문 읽기 모임'를 1시간 등록한다. 정원 3 이상, 시작 시각 10시 이상 18시 이하인 빈 시간대 중 도보 이동시간이 가장 짧은 시간대, 동률이면 시작 시간이 빠른 시간대를 선택한다. 진행 방식은 hybrid이다. |
-| schedule_003 | 2026-10-22에 '실험 점검 회의'를 1시간 등록한다. 정원 5 이상, 시작 시각 9시 이상 16시 이하인 빈 시간대 중 시작 시간이 가장 빠른 시간대, 동률이면 도보 이동시간이 짧은 시간대를 선택한다. 진행 방식은 in_person이다. |
-| schedule_004 | 2026-10-23에 '프로젝트 발표 연습'를 1시간 등록한다. 정원 5 이상, 시작 시각 13시 이상 19시 이하인 빈 시간대 중 도보 이동시간이 가장 짧은 시간대, 동률이면 시작 시간이 빠른 시간대를 선택한다. 진행 방식은 hybrid이다. |
-| schedule_005 | 2026-10-24에 '주간 회고'를 1시간 등록한다. 정원 4 이상, 시작 시각 11시 이상 18시 이하인 빈 시간대 중 시작 시간이 가장 빠른 시간대, 동률이면 도보 이동시간이 짧은 시간대를 선택한다. 진행 방식은 in_person이다. |
-| travel_001 | 2026-10-20 Seoul에서 Busan으로 간다. 기본 운임 100 이하, 출발 시각 8시 이상 12시 이하인 후보 중 이동시간이 가장 짧은 이동편, 동률이면 기본 운임이 낮은 이동편을 선택한다. 운임 옵션은 refundable이다. |
-| travel_002 | 2026-10-21 Seoul에서 Daejeon으로 간다. 기본 운임 60 이하, 출발 시각 9시 이상 13시 이하인 후보 중 기본 운임이 가장 낮은 이동편, 동률이면 이동시간이 짧은 이동편을 선택한다. 운임 옵션은 nonrefundable이다. |
-| travel_003 | 2026-10-22 Busan에서 Daegu으로 간다. 기본 운임 50 이하, 출발 시각 10시 이상 14시 이하인 후보 중 이동시간이 가장 짧은 이동편, 동률이면 기본 운임이 낮은 이동편을 선택한다. 운임 옵션은 refundable이다. |
-| travel_004 | 2026-10-23 Daejeon에서 Seoul으로 간다. 기본 운임 70 이하, 출발 시각 13시 이상 17시 이하인 후보 중 이동시간이 가장 짧은 이동편, 동률이면 기본 운임이 낮은 이동편을 선택한다. 운임 옵션은 nonrefundable이다. |
-| travel_005 | 2026-10-24 Daegu에서 Seoul으로 간다. 기본 운임 90 이하, 출발 시각 11시 이상 15시 이하인 후보 중 기본 운임이 가장 낮은 이동편, 동률이면 이동시간이 짧은 이동편을 선택한다. 운임 옵션은 refundable이다. |
-| place_001 | Seoul의 박물관 중 기본 이용료 30 이하, 도보 이동시간 25분 이하인 후보에서 평점이 가장 높은 장소, 동률이면 도보 이동시간이 짧은 장소를 선택한다. 방문 구역은 indoor로 지정한다. |
-| place_002 | Seoul의 카페 중 기본 이용료 20 이하, 도보 이동시간 20분 이하인 후보에서 도보 이동시간이 가장 짧은 장소, 동률이면 평점이 높은 장소를 선택한다. 방문 구역은 outdoor로 지정한다. |
-| place_003 | Busan의 식당 중 기본 이용료 40 이하, 도보 이동시간 30분 이하인 후보에서 평점이 가장 높은 장소, 동률이면 도보 이동시간이 짧은 장소를 선택한다. 방문 구역은 indoor로 지정한다. |
-| place_004 | Seoul의 공원 중 기본 이용료 10 이하, 도보 이동시간 25분 이하인 후보에서 도보 이동시간이 가장 짧은 장소, 동률이면 평점이 높은 장소를 선택한다. 방문 구역은 outdoor로 지정한다. |
-| place_005 | Busan의 전시관 중 기본 이용료 25 이하, 도보 이동시간 20분 이하인 후보에서 평점이 가장 높은 장소, 동률이면 도보 이동시간이 짧은 장소를 선택한다. 방문 구역은 indoor로 지정한다. |
+| shopping_001 | For the keyboard category, consider products with a base price of at most 100 and a rating of at least 4.0. Select the highest-rated product, breaking ties by the lowest price. Use the standard_delivery delivery option. |
+| shopping_002 | For the mouse category, consider products with a base price of at most 60 and a rating of at least 4.2. Select the lowest-priced product, breaking ties by the highest rating. Use the express_delivery delivery option. |
+| shopping_003 | For the headset category, consider products with a base price of at most 150 and a rating of at least 4.3. Select the highest-rated product, breaking ties by the lowest price. Use the standard_delivery delivery option. |
+| shopping_004 | For the webcam category, consider products with a base price of at most 90 and a rating of at least 4.1. Select the highest-rated product, breaking ties by the lowest price. Use the express_delivery delivery option. |
+| shopping_005 | For the usb_hub category, consider products with a base price of at most 70 and a rating of at least 4.0. Select the lowest-priced product, breaking ties by the highest rating. Use the standard_delivery delivery option. |
+| schedule_001 | Schedule 'Team meeting' for one hour on 2026-10-20. Consider available slots with capacity of at least 4 and a start hour from 9 through 17, inclusive. Select the slot with the earliest start hour, breaking ties by the shortest walking time. Use the in_person meeting format. |
+| schedule_002 | Schedule 'Paper reading group' for one hour on 2026-10-21. Consider available slots with capacity of at least 3 and a start hour from 10 through 18, inclusive. Select the slot with the shortest walking time, breaking ties by the earliest start hour. Use the hybrid meeting format. |
+| schedule_003 | Schedule 'Experiment review meeting' for one hour on 2026-10-22. Consider available slots with capacity of at least 5 and a start hour from 9 through 16, inclusive. Select the slot with the earliest start hour, breaking ties by the shortest walking time. Use the in_person meeting format. |
+| schedule_004 | Schedule 'Project presentation rehearsal' for one hour on 2026-10-23. Consider available slots with capacity of at least 5 and a start hour from 13 through 19, inclusive. Select the slot with the shortest walking time, breaking ties by the earliest start hour. Use the hybrid meeting format. |
+| schedule_005 | Schedule 'Weekly retrospective' for one hour on 2026-10-24. Consider available slots with capacity of at least 4 and a start hour from 11 through 18, inclusive. Select the slot with the earliest start hour, breaking ties by the shortest walking time. Use the in_person meeting format. |
+| travel_001 | Travel from Seoul to Busan on 2026-10-20. Consider options with a base fare of at most 100 and a departure hour from 8 through 12, inclusive. Select the option with the shortest travel duration, breaking ties by the lowest base fare. Use the refundable fare option. |
+| travel_002 | Travel from Seoul to Daejeon on 2026-10-21. Consider options with a base fare of at most 60 and a departure hour from 9 through 13, inclusive. Select the option with the lowest base fare, breaking ties by the shortest travel duration. Use the nonrefundable fare option. |
+| travel_003 | Travel from Busan to Daegu on 2026-10-22. Consider options with a base fare of at most 50 and a departure hour from 10 through 14, inclusive. Select the option with the shortest travel duration, breaking ties by the lowest base fare. Use the refundable fare option. |
+| travel_004 | Travel from Daejeon to Seoul on 2026-10-23. Consider options with a base fare of at most 70 and a departure hour from 13 through 17, inclusive. Select the option with the shortest travel duration, breaking ties by the lowest base fare. Use the nonrefundable fare option. |
+| travel_005 | Travel from Daegu to Seoul on 2026-10-24. Consider options with a base fare of at most 90 and a departure hour from 11 through 15, inclusive. Select the option with the lowest base fare, breaking ties by the shortest travel duration. Use the refundable fare option. |
+| place_001 | Find a museum in Seoul. Consider candidates with a base admission fee of at most 30 and a walking time of at most 25 minutes. Select the highest-rated place, breaking ties by the shortest walking time. Choose the indoor visit area. |
+| place_002 | Find a cafe in Seoul. Consider candidates with a base admission fee of at most 20 and a walking time of at most 20 minutes. Select the place with the shortest walking time, breaking ties by the highest rating. Choose the outdoor visit area. |
+| place_003 | Find a restaurant in Busan. Consider candidates with a base admission fee of at most 40 and a walking time of at most 30 minutes. Select the highest-rated place, breaking ties by the shortest walking time. Choose the indoor visit area. |
+| place_004 | Find a park in Seoul. Consider candidates with a base admission fee of at most 10 and a walking time of at most 25 minutes. Select the place with the shortest walking time, breaking ties by the highest rating. Choose the outdoor visit area. |
+| place_005 | Find a gallery in Busan. Consider candidates with a base admission fee of at most 25 and a walking time of at most 20 minutes. Select the highest-rated place, breaking ties by the shortest walking time. Choose the indoor visit area. |
 
-## 해석 범위
+## Interpretation and limits
 
-이 설계는 같은 작업 흐름의 남은 의존 단계 수를 통제합니다. 시작 시 제공되는 정보량과 완료된 작업도 달라지므로, 일반적인 현실 과제의 길이만 바꾼 실험이라고 해석하지 않습니다.
-h1은 올바르게 준비된 결과를 확정하는 조건이므로 후보 선택 능력은 주로 h3·h5에서 비교합니다. 20개 기본 시나리오를 분석 단위로 보고 각 h조건은 대응 비교합니다.
-현재 4개 분야 모두 같은 요청→조회→상세→준비→확정 구조를 사용합니다. 다양한 Agent 행동 전반에 일반화하려면 후속 데이터 확장이 필요합니다.
-execution-v2는 오류를 주입하지 않습니다. 대응 recovery-v2는 같은 원래 질문과 목표를 사용하며, 회복 비교는 그 fixture의 normal_restart와 error_restart 사이에서만 수행합니다. free 성공률에서 회복 성공률을 직접 빼지 않습니다.
+This design controls the number of remaining dependent calls in the same workflow. Starting information and previously completed work also differ, so it does not isolate only the length of a general real-world task.
+At h1 the model confirms an already correct draft; candidate-selection ability is therefore compared mainly at h3 and h5. Treat the 20 base scenarios as the analysis units and compare horizon conditions as matched observations.
+All four domains currently use the same read-request -> search -> details -> prepare -> confirm workflow. Broader claims about agent behavior require more diverse tasks.
+execution-v2 does not inject errors. Matched recovery-v2 tasks keep the same original question and goal; compare recovery only between normal_restart and error_restart within the matched fixture. Do not directly subtract recovery success from free-execution success.
+The model-facing dataset language is English, recorded as language=en and dataset_version=workflow-en-v1.

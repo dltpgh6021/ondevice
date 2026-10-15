@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 from src.client import LlamaCppClient
 from src.experiment import collect_metadata, run_batch
 from src.metrics import aggregate
-from src.tasks import load_tasks
+from src.dataset_validation import DatasetValidationError, load_validated_tasks
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +51,13 @@ def main() -> int:
         args.condition = "error_restart"
     if args.ram_sample_interval_ms <= 0:
         raise SystemExit("--ram-sample-interval-ms must be greater than zero")
-    tasks = load_tasks(args.tasks)
+    if args.output and Path(args.output).resolve() == Path(args.tasks).resolve():
+        raise SystemExit("--output must not overwrite the input dataset")
+    try:
+        tasks, validation = load_validated_tasks(args.tasks)
+    except DatasetValidationError as exc:
+        print(json.dumps(exc.report, ensure_ascii=False, indent=2), file=sys.stderr)
+        return 1
     task_type = args.task_type
     if task_type is None:
         task_type = "execution" if args.condition == "free" else "recovery"
@@ -78,7 +84,12 @@ def main() -> int:
         server_ram_sample_interval_ms=args.ram_sample_interval_ms,
     )
     metadata.update({"condition": args.condition, "task_type": task_type,
-                     "max_calls": args.max_calls, "shared_extra_action_turns": args.recovery_budget})
+                     "max_calls": args.max_calls, "shared_extra_action_turns": args.recovery_budget,
+                     "dataset_language": validation["language"],
+                     "dataset_version": validation["dataset_version"],
+                     "dataset_sha256": validation["dataset_sha256"],
+                     "tasks_sha256": validation["tasks_file_sha256"],
+                     "dataset_validation": {"valid": True, "validator_version": validation["validator_version"]}})
     client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed)
     metadata["inference_settings"] = {"temperature": client.temperature, "seed": client.seed,
                                        "max_tokens": client.max_tokens, "timeout_seconds": client.timeout_seconds}

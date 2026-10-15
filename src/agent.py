@@ -66,6 +66,8 @@ def run_agent(
         "finished": False,
         "final_answer": "",
         "schema_version": task.schema_version,
+        "dataset_language": task.language,
+        "dataset_version": task.dataset_version,
         "pair_id": task.base_id if task.task_type == "recovery" else None,
         "normal_remaining_calls": task.normal_remaining_calls,
         "recovery_min_calls": task.recovery_min_calls,

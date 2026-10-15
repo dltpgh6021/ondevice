@@ -1,0 +1,31 @@
+name: Validate dataset
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # https://github.com/actions/checkout
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # https://github.com/actions/setup-python
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Validate all English task fixtures
+        run: python scripts/validate_tasks.py --output results/dataset_validation.json
+      - name: Check generated dataset consistency
+        run: python scripts/build_tasks.py --check
+      - name: Reject known dataset defects
+        run: python -m unittest discover -s tests -v
+      - name: Replay all scripted agent conditions
+        run: python scripts/smoke_test.py
