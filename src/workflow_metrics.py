@@ -10,10 +10,15 @@ from typing import Any
 from .execution_environment import completion_condition_matches, workflow_stage
 from .tasks import Task
 
-METRICS_VERSION = "workflow-metrics-v4"
+METRICS_VERSION = "workflow-metrics-v5"
 LEGACY_METRICS_VERSION = "workflow-metrics-v2"
 LEGACY_AGENT_POLICY = "legacy-unversioned"
 MODEL_ERRORS = {"model_output_error", "invalid_action", "invalid_arguments"}
+# Tool rejections for an identifier that no earlier result issued (e.g. a
+# mistyped offer_id). Choosing an existing but wrong resource is instead a
+# selection error, recorded as saved_result_violates_request.
+IDENTIFIER_ERRORS = {"unknown_request", "context_not_found", "offer_not_found", "detail_not_found",
+                     "unknown_option", "draft_not_found"}
 
 
 def _executed(event: dict[str, Any]) -> bool:
@@ -80,6 +85,7 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
                     if event.get("model_error") or event.get("error") in MODEL_ERRORS]
     tool_errors = [event for event in response_events if event.get("tool_error")]
     semantic = [event for event in response_events if event.get("semantic_error")]
+    identifier_errors = [event for event in tool_errors if event.get("tool_error") in IDENTIFIER_ERRORS]
     errors = [event for event in response_events if _behavior_error(event)]
     tool_error_actions = [event for event in tool_events if _behavior_error(event)]
     first_error_event = min(errors, key=lambda event: event["step"], default=None)
@@ -145,6 +151,8 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "natural_error": natural_error,
         "natural_error_recovered": (natural_error and success) if natural_error is not None else None,
         "wrong_save_count": len(wrong_saves),
+        "identifier_error_count": len(identifier_errors),
+        "identifier_error_episode": bool(identifier_errors) if valid else None,
         "wrong_save_episode": bool(wrong_saves) if valid else None,
         "wrong_save_recovered": (bool(wrong_saves) and success) if valid else None,
         "error_count": len(errors), "model_output_error_count": len(model_errors),

@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from src.execution_environment import WORKFLOWS, candidate_is_eligible, select_target, workflow_chain
 from src.tasks import stable_hash
 
-DATASET_VERSION = "workflow-en-v2"
+DATASET_VERSION = "workflow-en-v3"
 
 
 def h1_seed_actions(spec: dict, index: int) -> list[dict]:
@@ -139,9 +139,11 @@ def scenario(domain: str, index: int) -> dict:
 
     # Vary the violated constraint and include primary-score ties that require
     # the stated secondary rule, instead of repeating one trivial selection.
+    # The violating candidate (values[0]) always ranks first when constraints
+    # are ignored, so choosing it is the plausible "forgot a constraint" mistake.
     if domain == "shopping":
-        if index == 1:
-            values[0] = {"price": budget - 35, "rating": minimum - 0.1}
+        if index in (1, 4):
+            values[0] = {"price": budget - 35 if index == 1 else budget - 40, "rating": minimum - 0.1}
         if index == 2:
             values[2]["rating"] = values[1]["rating"]
         if index == 4:
@@ -154,14 +156,14 @@ def scenario(domain: str, index: int) -> dict:
         if index == 3:
             values[1]["walking_min"] = values[2]["walking_min"]
     elif domain == "travel":
-        if index == 1:
+        if index in (1, 4):
             values[0] = {"price": budget - 30, "depart_hour": earliest - 1, "duration_min": 65}
         if index == 2:
             values[2]["duration_min"] = values[1]["duration_min"]
         if index == 4:
             values[2]["price"] = values[1]["price"]
     else:
-        if index == 1:
+        if index == 0:
             values[0] = {"fee": max(0, budget - 10), "walking_min": max_walk + 5, "rating": 4.9}
         if index == 2:
             values[2]["rating"] = values[1]["rating"]
@@ -238,8 +240,10 @@ def catalog_markdown() -> str:
     lines += ["", "## Interpretation and limits", "",
               "This design controls the number of remaining dependent calls in the same workflow. Starting information also differs, so it does not isolate only the length of a general real-world task.",
               "Error accumulation and first-error position from a cold start are analyzed with h5. Treat the 20 base scenarios as the analysis units and compare horizon conditions as matched observations.",
-              "At h5 free execution and normal_restart start from the same empty state and therefore present identical model inputs by definition; at h1 and h3 they differ in how earlier results are delivered.",
+              "Recovery fixtures exist only for h1 and h3. An h5 normal_restart would start from the same empty state as free h5, so h5 is analyzed with free execution only.",
+              "In every scenario the constraint-violating candidate ranks first when the constraints are ignored, so saving it is the plausible mistake of skipping a constraint check.",
               "All four domains currently use the same read-request -> search -> details -> prepare -> confirm workflow. Broader claims about agent behavior require more diverse tasks.",
+              "The only selection decisions (candidate and option) occur at h3 and h5 alike; the two extra h5 calls pass identifiers without a choice. Report h3-h5 differences as effects of longer dialogue and identifier passing, not of additional reasoning steps.",
               "Free execution does not inject errors. Compare recovery only between normal_restart and error_restart within the matched fixture. Do not directly subtract recovery success from free-execution success.",
               f"The model-facing dataset language is English, recorded as language=en and dataset_version={DATASET_VERSION}.", ""]
     return "\n".join(lines)

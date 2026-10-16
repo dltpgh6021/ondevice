@@ -9,7 +9,7 @@ import json
 from collections import Counter, defaultdict
 from typing import Any
 
-from .execution_environment import ExecutionEnvironment, WORKFLOWS, resource_id
+from .execution_environment import ExecutionEnvironment, WORKFLOWS, candidate_is_eligible, resource_id
 from .tasks import Task
 
 
@@ -101,6 +101,18 @@ def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
         _require(spec["domain"] == reference.domain, f"{base_id}: fixture domain differs")
         candidate, option = _infer_target(spec)
         full_chain = _actions(spec, candidate, option)
+        # The violating candidate must be the unconstrained ranking winner, so
+        # saving it is the plausible mistake of skipping a constraint check.
+        def unconstrained_rank(item: dict[str, Any]) -> tuple[float, ...]:
+            return tuple(_number(item["summary"].get(rule["field"]), "ranking value")
+                         * (1 if rule["direction"] == "min" else -1) for rule in spec["request"]["ranking"])
+
+        unconstrained = sorted(spec["candidates"], key=unconstrained_rank)
+        violating = [item for item in spec["candidates"] if not candidate_is_eligible(item, spec)]
+        _require(len(violating) == 1 and unconstrained[0] is violating[0]
+                 and unconstrained_rank(unconstrained[0]) < unconstrained_rank(unconstrained[1]),
+                 f"{base_id}: the constraint-violating candidate must rank first when constraints are ignored")
+        checks["violating_candidate_ranks_first"] += 1
         for task in variants:
             _require((task.query, task.execution_spec, task.success_condition, task.domain) ==
                      (reference.query, reference.execution_spec, reference.success_condition, reference.domain),

@@ -232,6 +232,9 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 # Same mistake as the injected recovery error, made by the model itself.
                 "wrong_save_episode_rate": rate("wrong_save_episode"),
                 "wrong_save_recovery_rate": conditional_rate("wrong_save_episode", "strict_success"),
+                # Nonexistent identifiers (copy errors), separate from wrong but existing choices above.
+                "identifier_error_episode_rate": rate("identifier_error_episode"),
+                "mean_identifier_error_count": mean("identifier_error_count"),
                 "first_error_stage_counts": dict(sorted(stage_counts.items())),
                 "next_action_accuracy": rate("next_action_correct"),
                 "next_action_valid_rate": rate("next_action_valid"),

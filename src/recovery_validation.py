@@ -19,6 +19,8 @@ from .environment import environment_for_task
 from .execution_environment import ExecutionEnvironment, WORKFLOWS, candidate_is_eligible
 from .execution_validation import _actions, _infer_target
 from .tasks import Task, stable_hash
+
+RECOVERY_HORIZONS = (1, 3)
 from .metrics import score_trace
 
 
@@ -47,8 +49,24 @@ def _model_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ] + [{"type": "finish", "answer": "completed"}]
 
 
-def _expected_plan(spec: dict[str, Any], horizon: int) -> dict[str, list[dict[str, Any]]]:
-    """Independent derivation from public rules, not from the generator."""
+def _model_view(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> str:
+    """Model-visible input with call-ID labels removed (chat templates may omit them)."""
+    view = copy.deepcopy(messages)
+    for message in view:
+        for call in message.get("tool_calls") or []:
+            call["id"] = "call"
+        if "tool_call_id" in message:
+            message["tool_call_id"] = "call"
+    return json.dumps([view, tools], sort_keys=True, ensure_ascii=False)
+
+
+def _expected_plan(spec: dict[str, Any], horizon: int, seeds: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Independent derivation from public rules, not from the generator.
+
+    The checkpoint history is the matched free task's provided context. Repair
+    must cost exactly the normal remaining work.
+    """
+    _require(horizon in RECOVERY_HORIZONS, "recovery fixtures exist only for horizons 1 and 3")
     candidate, option = _infer_target(spec)
     chain = _actions(spec, candidate, option)
     ineligible = [item for item in spec["candidates"] if not candidate_is_eligible(item, spec)]
@@ -57,28 +75,38 @@ def _expected_plan(spec: dict[str, Any], horizon: int) -> dict[str, list[dict[st
     wrong_options = [item for item in ineligible[0]["options"] if item["available"] and item["kind"] == required]
     _require(len(wrong_options) == 1, "violating candidate needs one available requested option")
     wrong_chain = _actions(spec, ineligible[0], wrong_options[0])
+    if horizon == 1:
+        _require(wrong_chain[3] in seeds, "h1 checkpoint must already hold the constraint-violating draft")
     return {
-        "prefix": chain[:5 - horizon], "normal": chain[5 - horizon:],
-        "injected": wrong_chain[2:] if horizon == 1 else wrong_chain[5 - horizon:],
-        "repair": chain[4:] if horizon == 1 else chain[2:],
+        "prefix": seeds, "normal": chain[5 - horizon:],
+        "injected": wrong_chain[4:] if horizon == 1 else wrong_chain[5 - horizon:],
+        "repair": chain[5 - horizon:],
     }
 
 
 def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
-    """Check 60 recovery fixtures and their 60 corresponding execution tasks."""
+    """Check 40 recovery fixtures and their corresponding h1/h3 execution tasks."""
     execution = {task.task_id: task for task in tasks if task.task_type == "execution"}
     recovery = [task for task in tasks if task.task_type == "recovery"]
-    _require(len(recovery) == 60, f"expected 60 recovery tasks, found {len(recovery)}")
-    _require(len({task.task_id for task in recovery}) == 60, "duplicate recovery task IDs")
+    _require(len(recovery) == 40, f"expected 40 recovery tasks, found {len(recovery)}")
+    _require(len({task.task_id for task in recovery}) == 40, "duplicate recovery task IDs")
     _require(all(task.schema_version == "recovery-v2" for task in recovery), "recovery tasks must all use recovery-v2")
-    _require(Counter(task.horizon for task in recovery) == Counter({1: 20, 3: 20, 5: 20}),
-             "recovery tasks must have twenty fixtures per nominal horizon")
-    _require(Counter(task.domain for task in recovery) == Counter({domain: 15 for domain in WORKFLOWS}),
-             "recovery tasks must have fifteen fixtures per domain")
-    _require(Counter(task.base_id for task in recovery) == Counter(execution.keys()),
-             "each execution task must have exactly one corresponding recovery fixture")
+    _require(Counter(task.horizon for task in recovery) == Counter({1: 20, 3: 20}),
+             "recovery tasks must have twenty fixtures at h1 and at h3, and none at h5")
+    _require(Counter(task.domain for task in recovery) == Counter({domain: 10 for domain in WORKFLOWS}),
+             "recovery tasks must have ten fixtures per domain")
+    _require(Counter(task.base_id for task in recovery) ==
+             Counter(task_id for task_id, task in execution.items() if task.horizon in RECOVERY_HORIZONS),
+             "each h1/h3 execution task must have exactly one corresponding recovery fixture")
     by_scenario: dict[str, list[Task]] = defaultdict(list)
     checks: Counter[str] = Counter()
+    normal_views: dict[str, str] = {}
+    error_views: dict[str, str] = {}
+    free_views: dict[str, str] = {}
+    for task in execution.values():
+        free_environment = environment_for_task(task)
+        free_messages, _ = free_environment.prepare_condition(task, "free")
+        free_views[_model_view(free_messages, free_environment.tool_definitions())] = task.task_id
 
     for task in recovery:
         try:
@@ -90,15 +118,15 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
                      "paired fixture changes original query, domain, horizon, normal oracle, or goal")
             _require(task.execution_spec == pair.execution_spec, "fixture changes request or candidates")
             _require(not task.recovery_query, "recovery must retain the original query without corrective instructions")
-            plan = _expected_plan(task.execution_spec, task.horizon)
-            _require(task.initial_actions == plan["prefix"], "checkpoint prefix is not the correct workflow prefix")
+            plan = _expected_plan(task.execution_spec, task.horizon, list(pair.initial_actions or []))
+            _require(task.initial_actions == plan["prefix"], "checkpoint history differs from the matched free task's provided context")
             _require(task.gold_actions == plan["normal"], "normal oracle differs from the inferred target")
             _require(task.normal_remaining_calls == task.horizon, "normal remaining calls must equal nominal horizon")
             _require(task.error_injection == {"type": "wrong_saved_result", "actions": plan["injected"]},
                      "injection must continue with the constraint-violating candidate for the same request")
             _require(task.recovery_actions == plan["repair"], "repair oracle is not the minimal re-confirmation path")
-            _require(task.recovery_min_calls == len(task.recovery_actions) <= task.horizon,
-                     "repair minimum must equal the oracle and not exceed the normal horizon")
+            _require(task.recovery_min_calls == len(task.recovery_actions) == task.normal_remaining_calls,
+                     "repair minimum must equal the oracle and the normal remaining calls")
             checks["matched_execution_pairs"] += 1
 
             normal, normal_messages = _start(task, "normal_restart")
@@ -116,6 +144,11 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
                      "pre-branch checkpoint hashes differ or are incorrect")
             _require(normal_meta["resume_workflow_step"] == error_meta["resume_workflow_step"] == 5 - task.horizon,
                      "resume step does not match the provided correct prefix")
+            free_environment = environment_for_task(pair)
+            free_environment.prepare_condition(pair, "free")
+            _require(free_environment.snapshot() == normal_meta["checkpoint_state"],
+                     "free and normal_restart must hold the same information at the checkpoint")
+            checks["free_normal_information_parity"] += 1
             _require(normal_meta["injected_actions"] == [], "normal condition contains an injected action")
             injected = error_meta["injected_actions"]
             _require([item["action"] for item in injected] == plan["injected"] and
@@ -148,6 +181,14 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
                          "injected result is absent or differs from the actual tool response")
             _require(not normal.check_success(task.success_condition) and not error.check_success(task.success_condition),
                      "task begins complete")
+            normal_view = _model_view(normal_messages, normal.tool_definitions())
+            error_view = _model_view(error_messages, error.tool_definitions())
+            _require(normal_view not in free_views, f"normal_restart input duplicates free task {free_views.get(normal_view)}")
+            _require(normal_view not in normal_views and normal_view not in error_views and error_view not in error_views
+                     and error_view not in normal_views and error_view not in free_views,
+                     "recovery condition input duplicates another condition's model input")
+            normal_views[normal_view], error_views[error_view] = task.task_id, task.task_id
+            checks["distinct_model_inputs"] += 1
             repeated, repeated_messages = _start(task, "error_restart")
             _require(repeated.snapshot() == error.snapshot() and repeated_messages == error_messages and
                      repeated.preparation_metadata == error_meta, "fresh error preparation is not deterministic")
@@ -216,7 +257,7 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
 
     _require(len(by_scenario) == 20, "expected twenty matched base scenarios")
     for base_id, variants in by_scenario.items():
-        _require(Counter(task.horizon for task in variants) == Counter({1: 1, 3: 1, 5: 1}),
+        _require(Counter(task.horizon for task in variants) == Counter({1: 1, 3: 1}),
                  f"{base_id}: recovery horizons are not matched")
         wrong = {task.error_injection["actions"][-1]["arguments"]["draft_id"] for task in variants}
         _require(len(wrong) == 1 and all(task.execution_spec == variants[0].execution_spec for task in variants),
@@ -229,16 +270,16 @@ def validate_recovery_tasks(tasks: list[Task]) -> dict[str, Any]:
         "base_scenarios": len(by_scenario),
         "paired_conditions_per_model": len(recovery) * 2,
         "by_horizon": {str(h): n for h, n in sorted(Counter(task.horizon for task in recovery).items())},
-        "normal_remaining_calls": {str(h): h for h in (1, 3, 5)},
+        "normal_remaining_calls": {str(h): h for h in RECOVERY_HORIZONS},
         "recovery_min_calls": {str(h): sorted({task.recovery_min_calls for task in recovery if task.horizon == h})
-                               for h in (1, 3, 5)},
+                               for h in RECOVERY_HORIZONS},
         "checks": dict(sorted(checks.items())),
         "validation_scope": "matched checkpoints, visible wrong continuations, exact saved-state grading, reference repair subsequences, and scripted continuations",
         "limitations": [
             "Not exhaustive search over arbitrary arguments, action sequences, or model policies.",
             "The error is one supplied wrong continuation that saves the constraint-violating candidate for the same request; conclusions do not cover every agent failure type.",
-            "Nominal horizons 1/3/5 describe normal remaining work; minimum repair calls are 1/3/3.",
+            "Recovery covers h1 and h3 only; h5 has no checkpoint history and is analyzed with free execution. Minimum repair calls equal the normal remaining calls (1 and 3).",
             "The injected continuation is supplied history rather than a naturally generated past session.",
-            "Twenty base scenarios, rather than sixty independent problems, form the matched experimental units.",
+            "Twenty base scenarios, rather than forty independent problems, form the matched experimental units.",
         ],
     }

@@ -12,7 +12,7 @@ from src.dataset_validation import DatasetValidationError, validate_dataset
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate all 120 English tasks offline (no model/server required)")
+    parser = argparse.ArgumentParser(description="Validate all 100 English tasks offline (no model/server required)")
     parser.add_argument("--tasks", default=str(ROOT / "tasks" / "tasks.json"))
     parser.add_argument("--output", default=None, help="Optional JSON validation report")
     args = parser.parse_args()

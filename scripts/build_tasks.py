@@ -52,12 +52,12 @@ def main() -> int:
             path = source.parent / name
             if not path.exists() or path.read_text(encoding="utf-8") != content.rstrip("\r\n") + "\n":
                 raise SystemExit(f"{name} differs from the generated English catalog.")
-        print("All 120 English tasks match the validated scenario definitions.")
+        print(f"All {len(expected)} English tasks match the validated scenario definitions.")
         return 0
     _write_generated(source, json.dumps(expected, ensure_ascii=False, indent=2) + "\n")
     _write_generated(source.parent / "EXECUTION_TASKS.md", execution_catalog() + "\n")
     _write_generated(source.parent / "RECOVERY_TASKS.md", recovery_catalog(execution) + "\n")
-    print(json.dumps({"written": str(source), "tasks": 120, "language": report["language"],
+    print(json.dumps({"written": str(source), "tasks": len(expected), "language": report["language"],
                       "dataset_version": report["dataset_version"],
                       "dataset_sha256": report["dataset_sha256"]}, indent=2))
     return 0

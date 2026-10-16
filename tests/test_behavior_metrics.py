@@ -300,6 +300,26 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertGreaterEqual(score["semantic_error_count"], 1)
         self.assertIsNone(score["recovery_stable_resolution_turn"])
 
+    def test_identifier_copy_error_is_separate_from_selection_error(self):
+        """A mistyped identifier is not a wrong choice; the two are counted apart."""
+        draft_id = self.execution.gold_actions[0]["arguments"]["draft_id"]
+        mistyped = {"type": "tool_call", "name": self.execution.gold_actions[0]["tool"],
+                    "arguments": {"draft_id": draft_id[:-1]}}
+        _, score, _ = self.run_case(self.execution, [
+            mistyped, action(self.execution.gold_actions[0]), finish(),
+        ])
+        self.assertEqual(score["identifier_error_count"], 1)
+        self.assertTrue(score["identifier_error_episode"])
+        self.assertEqual(score["wrong_save_count"], 0)
+        _, wrong, _ = self.run_case(self.execution, [
+            action(self.recovery.error_injection["actions"][-1]), action(self.execution.gold_actions[0]), finish(),
+        ])
+        self.assertEqual(wrong["identifier_error_count"], 0)
+        self.assertEqual(wrong["wrong_save_count"], 1)
+        summary = aggregate([{**score, "model_label": "test"}, {**wrong, "model_label": "test"}])[0]
+        self.assertEqual(summary["identifier_error_episode_rate"], 0.5)
+        self.assertEqual(summary["wrong_save_episode_rate"], 0.5)
+
     def test_natural_wrong_save_matches_the_injected_error_type(self):
         """A model's own wrong confirmation in free execution is the injected mistake."""
         wrong_confirm = action(self.recovery.error_injection["actions"][-1])
@@ -323,7 +343,7 @@ class BehaviorMetricTests(unittest.TestCase):
     def test_trace_records_metric_and_shared_policy_versions(self):
         trace, score, _ = self.run_case(self.execution,
                                       [action(self.execution.gold_actions[0]), finish()])
-        self.assertEqual(trace["metrics_version"], "workflow-metrics-v4")
+        self.assertEqual(trace["metrics_version"], "workflow-metrics-v5")
         self.assertEqual(trace["agent_policy_version"], "single-action-feedback-v1")
         self.assertEqual(score["metrics_version"], trace["metrics_version"])
 
@@ -350,7 +370,7 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertEqual(summary["mean_error_turn_rate"], 0.5)
         self.assertEqual(summary["pooled_error_turn_rate"], 0.1)
 
-    def recovery_record(self, condition, *, version="workflow-metrics-v4"):
+    def recovery_record(self, condition, *, version="workflow-metrics-v5"):
         oracle = self.recovery.recovery_actions if condition == "error_restart" else self.recovery.gold_actions
         trace, score, _ = self.run_case(self.recovery,
             [action(entry) for entry in oracle] + [finish()], condition=condition)

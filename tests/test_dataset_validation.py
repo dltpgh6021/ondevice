@@ -64,9 +64,9 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_checked_in_english_dataset_is_valid(self) -> None:
         report = validate_dataset(self.task_path)
         self.assertIs(report.get("valid"), True)
-        self.assertEqual(len(self.rows), 120)
+        self.assertEqual(len(self.rows), 100)
         self.assertEqual(sum(row["task_type"] == "execution" for row in self.rows), 60)
-        self.assertEqual(sum(row["task_type"] == "recovery" for row in self.rows), 60)
+        self.assertEqual(sum(row["task_type"] == "recovery" for row in self.rows), 40)
         self.assertTrue(all(row["language"] == "en" for row in self.rows))
 
     def test_shared_loading_api_rejects_invalid_dataset(self) -> None:
@@ -113,7 +113,7 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         record = json.loads(output.read_text(encoding="utf-8"))
         self.assertTrue(record["metadata"]["dataset_validation"]["valid"])
         self.assertEqual(record["metadata"]["dataset_language"], "en")
-        self.assertEqual(record["metadata"]["dataset_version"], "workflow-en-v2")
+        self.assertEqual(record["metadata"]["dataset_version"], "workflow-en-v3")
         self.assertEqual(record["task"]["language"], "en")
         self.assertEqual(record["trace"]["dataset_language"], "en")
         self.assertTrue(json.dumps(record["trace"]["initial_messages"], ensure_ascii=False).isascii())
@@ -295,19 +295,71 @@ class DatasetValidationRegressionTests(unittest.TestCase):
 
         tasks = load_tasks(self.task_path)
         by_id = {task.task_id: task for task in tasks}
-        for horizon in (1, 3, 5):
+        for horizon in (1, 3):
             with self.subTest(horizon=horizon):
                 task = by_id[f"shopping_001_h{horizon}"]
                 recovery = by_id[f"recovery_shopping_001_h{horizon}"]
-                free_messages, _ = environment_for_task(task).prepare_condition(task, "free")
-                normal_messages, _ = environment_for_task(recovery).prepare_condition(recovery, "normal_restart")
+                free_environment, normal_environment = environment_for_task(task), environment_for_task(recovery)
+                free_messages, _ = free_environment.prepare_condition(task, "free")
+                normal_messages, _ = normal_environment.prepare_condition(recovery, "normal_restart")
                 self.assertFalse(any(message.get("tool_calls") for message in free_messages))
-                self.assertEqual(free_messages == normal_messages, horizon == 5)
+                self.assertNotEqual(free_messages, normal_messages)
+                # Same information, different delivery: the checkpoint states match.
+                self.assertEqual(free_environment.snapshot(), normal_environment.snapshot())
 
     def test_condition_separation_is_reported(self) -> None:
         report = validate_dataset(self.task_path)
         self.assertEqual(report["condition_separation"]["identical_free_normal_inputs_by_horizon"],
-                         {"1": 0, "3": 0, "5": 20})
+                         {"1": 0, "3": 0})
+
+    def assert_rejected_at(self, rows: Any, stage: str, message: str) -> None:
+        """Rejected by the named semantic stage, not only by generator source matching."""
+        from src.dataset_validation import validate_dataset_records
+
+        with self.assertRaises(DatasetValidationError) as caught:
+            validate_dataset_records(rows)
+        self.assertEqual(caught.exception.report["stage"], stage)
+        self.assertIn(message, caught.exception.report["errors"][0])
+
+    def test_h5_recovery_fixture_is_rejected(self) -> None:
+        # An h5 checkpoint has no history: its normal branch equals free h5 and an
+        # injected full wrong workflow equals the h3 error branch.
+        rows = copy.deepcopy(self.rows)
+        recovery = copy.deepcopy(next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3))
+        recovery.update(id=recovery["id"].replace("_h3", "_h5"), base_id=recovery["base_id"].replace("_h3", "_h5"),
+                        horizon=5, normal_remaining_calls=5)
+        rows.append(recovery)
+        self.assert_rejected_at(rows, "schema", "recovery horizon must be 1 or 3")
+
+    def test_normal_restart_h1_must_offer_the_same_drafts_as_free_h1(self) -> None:
+        # The v2 defect: free h1 offered three drafts but normal_restart h1 only the
+        # correct one, so the normal branch had no choice left.
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 1)
+        target_option = recovery["success_condition"]["completed_request_equals"]["option_id"]
+        prepare = recovery["initial_actions"][-1]["tool"]
+        recovery["initial_actions"] = [action for action in recovery["initial_actions"]
+                                       if action["tool"] != prepare or action["arguments"]["option_id"] == target_option]
+        self.assertEqual(sum(action["tool"] == prepare for action in recovery["initial_actions"]), 1)
+        self.assert_rejected_at(rows, "recovery_semantics", "matched free task's provided context")
+
+    def test_repair_must_cost_the_normal_remaining_calls(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
+        recovery["recovery_min_calls"] = 2
+        self.assert_rejected_at(rows, "schema", "normal and repair minimums must both equal the horizon")
+
+    def test_violating_candidate_must_rank_first_without_constraints(self) -> None:
+        # A violator that is also last by the ranking rule makes the injected
+        # mistake implausible and trivially detectable.
+        rows = copy.deepcopy(self.rows)
+        base_id = "shopping_001"
+        for row in rows:
+            if row["id"].endswith(base_id + "_h1") or row["id"].endswith(base_id + "_h3") or row["id"].endswith(base_id + "_h5"):
+                for candidate in row["execution_spec"]["candidates"]:
+                    if candidate["summary"]["price"] > row["execution_spec"]["request"]["constraints"]["max_price"]:
+                        candidate["summary"]["rating"] = 4.0
+        self.assert_rejected_at(rows, "execution_semantics", "must rank first when constraints are ignored")
 
     def test_h1_must_offer_a_choice_between_drafts(self) -> None:
         rows = copy.deepcopy(self.rows)

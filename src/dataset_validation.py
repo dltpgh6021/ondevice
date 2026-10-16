@@ -20,8 +20,8 @@ from .execution_validation import validate_execution_tasks
 from .recovery_validation import validate_recovery_tasks
 from .tasks import Task, canonical_json, stable_hash, validate_task_set
 
-DATASET_VERSION = "workflow-en-v2"
-VALIDATOR_VERSION = "dataset-validator-v2"
+DATASET_VERSION = "workflow-en-v3"
+VALIDATOR_VERSION = "dataset-validator-v3"
 
 
 class DatasetValidationError(ValueError):
@@ -97,7 +97,8 @@ def _schema(rows: Any) -> None:
         _require(row["language"] == "en" and row["dataset_version"] == DATASET_VERSION, path + ": expected English dataset " + DATASET_VERSION)
         _type(row["horizon"], int, path + ".horizon")
         _type(row["checkpoint_step"], int, path + ".checkpoint_step")
-        _require(row["horizon"] in {1, 3, 5}, path + ": horizon must be 1, 3 or 5")
+        _require(row["horizon"] in ({1, 3} if is_recovery else {1, 3, 5}),
+                 path + (": recovery horizon must be 1 or 3" if is_recovery else ": horizon must be 1, 3 or 5"))
         _require(0 <= row["checkpoint_step"] < row["horizon"], path + ": checkpoint must leave unfinished work")
         for key in ("initial_actions", "gold_actions") + (("recovery_actions",) if is_recovery else ()):
             _type(row[key], list, path + "." + key)
@@ -230,26 +231,28 @@ def _model_payloads(tasks: list[Task]) -> dict[str, int]:
 
 
 def _condition_separation(tasks: list[Task]) -> dict[str, Any]:
-    """free and normal_restart must differ wherever an earlier result is supplied.
+    """free and normal_restart hold the same information but must differ in delivery.
 
-    At h5 both start from the empty state, so their inputs coincide by definition.
+    Recovery fixtures exist only where earlier results are supplied (h1, h3), so
+    no matched pair may present identical model inputs.
     """
     by_id = {task.task_id: task for task in tasks}
-    identical: dict[str, int] = {"1": 0, "3": 0, "5": 0}
-    for task in tasks:
-        if task.task_type != "execution":
+    identical: dict[str, int] = {"1": 0, "3": 0}
+    for recovery in tasks:
+        if recovery.task_type != "recovery":
             continue
-        recovery = by_id[f"recovery_{task.task_id}"]
+        task = by_id[recovery.base_id]
         free_env, normal_env = environment_for_task(task), environment_for_task(recovery)
         free_messages, _ = free_env.prepare_condition(task, "free")
         normal_messages, _ = normal_env.prepare_condition(recovery, "normal_restart")
         same = canonical_json([free_messages, free_env.tool_definitions()]) == canonical_json(
             [normal_messages, normal_env.tool_definitions()])
-        _require(not same or task.horizon == 5,
-                 f"{task.task_id}: free and normal_restart present identical model inputs")
+        _require(not same, f"{task.task_id}: free and normal_restart present identical model inputs")
+        _require(free_env.snapshot() == normal_env.snapshot(),
+                 f"{task.task_id}: free and normal_restart start with different information")
         identical[str(task.horizon)] += int(same)
     return {"identical_free_normal_inputs_by_horizon": identical,
-            "note": "h5 free and normal_restart both start from the empty state by definition"}
+            "note": "matched free and normal_restart share the checkpoint state and differ only in delivery; h5 has no recovery fixture"}
 
 
 def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
@@ -258,8 +261,9 @@ def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
     try:
         _schema(rows)
         tasks = [Task.from_mapping(row) for row in rows]
-        collection = validate_task_set(tasks, expected_total=120, expected_counts={"execution": 60, "recovery": 60},
-                                       required_horizons={1, 3, 5}, expected_per_type_horizon=20, require_pairs=True)
+        collection = validate_task_set(tasks, expected_total=100, expected_counts={"execution": 60, "recovery": 40},
+                                       required_horizons={1, 3, 5}, expected_per_type_horizon=20, require_pairs=True,
+                                       recovery_horizons={1, 3})
         stage = "language_and_information"
         _ascii(rows, "dataset")
         _information(tasks)

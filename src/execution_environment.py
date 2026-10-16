@@ -36,7 +36,7 @@ WORKFLOWS = {
 
 
 EXECUTION_PROTOCOL = "execution-v3-provided-context"
-RECOVERY_PROTOCOL = "wrong-saved-result-v3"
+RECOVERY_PROTOCOL = "wrong-saved-result-v4"
 PROVIDED_CONTEXT_HEADER = (
     "Information already available from earlier lookups for this request "
     "(tool name and its result, JSON):"

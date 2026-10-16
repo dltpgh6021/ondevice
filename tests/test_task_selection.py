@@ -26,7 +26,7 @@ class TaskSelectionTests(unittest.TestCase):
         cls.task_path = ROOT / "tasks" / "tasks.json"
         cls.tasks = load_tasks(cls.task_path)
         cls.validation = {
-            "language": "en", "dataset_version": "workflow-en-v2",
+            "language": "en", "dataset_version": "workflow-en-v3",
             "dataset_sha256": "offline-dataset-hash",
             "tasks_file_sha256": "offline-file-hash",
             "validator_version": "dataset-validator-v1",
@@ -48,12 +48,16 @@ class TaskSelectionTests(unittest.TestCase):
         self.assertEqual(run_experiment.select_tasks(self.tasks, task_type="all"), self.tasks)
 
     def test_horizon_selects_20_tasks_of_each_requested_type(self) -> None:
-        for task_type in ("execution", "recovery"):
-            for horizon in (1, 3, 5):
+        for task_type, horizons in (("execution", (1, 3, 5)), ("recovery", (1, 3))):
+            for horizon in horizons:
                 with self.subTest(task_type=task_type, horizon=horizon):
                     selected = run_experiment.select_tasks(self.tasks, task_type=task_type, horizon=horizon)
                     self.assertEqual(len(selected), 20)
                     self.assertTrue(all(task.task_type == task_type and task.horizon == horizon for task in selected))
+
+    def test_recovery_has_no_h5_fixture(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=5)
 
     def test_all_type_intersects_horizon_without_reordering(self) -> None:
         selected = run_experiment.select_tasks(self.tasks, task_type="all", horizon=3)
@@ -61,18 +65,18 @@ class TaskSelectionTests(unittest.TestCase):
         self.assertEqual(len(selected), 40)
 
     def test_limit_is_applied_after_horizon_and_type(self) -> None:
-        selected = run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=5, limit=1)
+        selected = run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=3, limit=1)
         self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0].task_id, "recovery_shopping_001_h5")
+        self.assertEqual(selected[0].task_id, "recovery_shopping_001_h3")
 
     def test_task_id_selects_exact_existing_id(self) -> None:
         selected = run_experiment.select_tasks(self.tasks, task_type="execution", task_id="shopping_004_h3")
         self.assertEqual([task.task_id for task in selected], ["shopping_004_h3"])
 
     def test_task_id_can_intersect_horizon_and_limit(self) -> None:
-        selected = run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=5,
-                                               task_id="recovery_travel_003_h5", limit=1)
-        self.assertEqual([task.task_id for task in selected], ["recovery_travel_003_h5"])
+        selected = run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=3,
+                                               task_id="recovery_travel_003_h3", limit=1)
+        self.assertEqual([task.task_id for task in selected], ["recovery_travel_003_h3"])
 
     def test_unknown_id_and_prefixes_are_not_automatically_corrected(self) -> None:
         for task_id in ("shopping_001", "shopping_001_h30", "SHOPPING_001_H3", "missing_task"):
@@ -92,7 +96,7 @@ class TaskSelectionTests(unittest.TestCase):
 
     def test_selection_does_not_mutate_input_tasks(self) -> None:
         before = copy.deepcopy(self.tasks)
-        run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=5, limit=1)
+        run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=3, limit=1)
         self.assertEqual(self.tasks, before)
 
     def test_cli_rejects_unsupported_horizon_before_model_client(self) -> None:
@@ -177,8 +181,8 @@ class TaskSelectionTests(unittest.TestCase):
         return record, summary
 
     def test_h3_h5_cli_runs_actual_selected_tasks_for_all_three_conditions(self) -> None:
-        for horizon in (3, 5):
-            for condition in ("free", "normal_restart", "error_restart"):
+        for horizon, conditions in ((3, ("free", "normal_restart", "error_restart")), (5, ("free",))):
+            for condition in conditions:
                 with self.subTest(condition=condition, horizon=horizon):
                     record, _ = self._run_scripted_selection(condition=condition, horizon=horizon)
                     self.assertEqual(record["task"]["horizon"], horizon)
@@ -192,8 +196,8 @@ class TaskSelectionTests(unittest.TestCase):
         self.assertEqual(record["task"]["id"], "place_005_h3")
 
     def test_recovery_alias_preserves_selection_and_records_canonical_condition(self) -> None:
-        record, _ = self._run_scripted_selection(condition="recovery", horizon=5,
-                                                task_id="recovery_travel_003_h5")
+        record, _ = self._run_scripted_selection(condition="recovery", horizon=3,
+                                                task_id="recovery_travel_003_h3")
         self.assertEqual(record["score"]["condition"], "error_restart")
         self.assertEqual(record["metadata"]["condition"], "error_restart")
 

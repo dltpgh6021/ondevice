@@ -43,7 +43,9 @@ Every row below has three tasks with the suffixes `_h1`, `_h3`, and `_h5`. Actua
 
 This design controls the number of remaining dependent calls in the same workflow. Starting information also differs, so it does not isolate only the length of a general real-world task.
 Error accumulation and first-error position from a cold start are analyzed with h5. Treat the 20 base scenarios as the analysis units and compare horizon conditions as matched observations.
-At h5 free execution and normal_restart start from the same empty state and therefore present identical model inputs by definition; at h1 and h3 they differ in how earlier results are delivered.
+Recovery fixtures exist only for h1 and h3. An h5 normal_restart would start from the same empty state as free h5, so h5 is analyzed with free execution only.
+In every scenario the constraint-violating candidate ranks first when the constraints are ignored, so saving it is the plausible mistake of skipping a constraint check.
 All four domains currently use the same read-request -> search -> details -> prepare -> confirm workflow. Broader claims about agent behavior require more diverse tasks.
+The only selection decisions (candidate and option) occur at h3 and h5 alike; the two extra h5 calls pass identifiers without a choice. Report h3-h5 differences as effects of longer dialogue and identifier passing, not of additional reasoning steps.
 Free execution does not inject errors. Compare recovery only between normal_restart and error_restart within the matched fixture. Do not directly subtract recovery success from free-execution success.
-The model-facing dataset language is English, recorded as language=en and dataset_version=workflow-en-v2.
+The model-facing dataset language is English, recorded as language=en and dataset_version=workflow-en-v3.

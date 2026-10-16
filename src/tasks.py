@@ -88,11 +88,11 @@ def validate_task(task: Task) -> None:
     if task.schema_version == "recovery-v2":
         if task.task_type != "recovery" or not task.execution_spec or task.recovery_query:
             raise ValueError(f"{task.task_id}: recovery-v2 requires a fixture and the original query only")
-        if len(task.initial_actions or []) + task.horizon != 5 or task.checkpoint_step != 0:
+        # h5 has no checkpoint history, so recovery fixtures exist only for h1 and h3.
+        if task.horizon not in {1, 3} or not task.initial_actions or task.checkpoint_step != 0:
             raise ValueError(f"{task.task_id}: invalid recovery checkpoint")
-        if (task.normal_remaining_calls != task.horizon or task.recovery_min_calls is None
-                or not 1 <= task.recovery_min_calls <= task.horizon):
-            raise ValueError(f"{task.task_id}: normal minimum must be h and repair minimum 1..h")
+        if task.normal_remaining_calls != task.horizon or task.recovery_min_calls != task.horizon:
+            raise ValueError(f"{task.task_id}: normal and repair minimums must both equal the horizon")
         if len(task.recovery_actions or []) != task.recovery_min_calls:
             raise ValueError(f"{task.task_id}: recovery oracle length differs from recovery_min_calls")
     for index, action in enumerate(task.gold_actions):
@@ -120,6 +120,7 @@ def validate_task_set(
     required_horizons: set[int] | None = None,
     expected_per_type_horizon: int | None = None,
     require_pairs: bool = False,
+    recovery_horizons: set[int] | None = None,
 ) -> dict[str, Any]:
     """Validate collection-level integrity and return count diagnostics."""
     errors: list[str] = []
@@ -149,9 +150,12 @@ def validate_task_set(
         for task_type in ("execution", "recovery"):
             for horizon in sorted(required_horizons):
                 found = by_type_horizon.get((task_type, horizon), 0)
-                if found != expected_per_type_horizon:
+                expected = expected_per_type_horizon
+                if task_type == "recovery" and recovery_horizons is not None and horizon not in recovery_horizons:
+                    expected = 0
+                if found != expected:
                     errors.append(
-                        f"expected {expected_per_type_horizon} {task_type} tasks at horizon {horizon}, found {found}"
+                        f"expected {expected} {task_type} tasks at horizon {horizon}, found {found}"
                     )
 
     if require_pairs:
@@ -178,6 +182,8 @@ def validate_task_set(
                 )
         recovery_base_ids = {task.base_id for task in recovery_tasks}
         for execution in execution_by_id.values():
+            if recovery_horizons is not None and execution.horizon not in recovery_horizons:
+                continue
             if execution.task_id not in recovery_base_ids:
                 errors.append(f"execution task {execution.task_id} has no recovery pair")
 

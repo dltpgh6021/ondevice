@@ -12,7 +12,7 @@ from .environment import MockEnvironment
 from .tasks import Task
 
 AGENT_POLICY_VERSION = "single-action-feedback-v1"
-METRICS_VERSION = "workflow-metrics-v4"
+METRICS_VERSION = "workflow-metrics-v5"
 
 
 def _output_feedback(messages: list[dict[str, Any]], output: Any, kind: str) -> None:
