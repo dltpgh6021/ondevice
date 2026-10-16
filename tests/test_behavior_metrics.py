@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.agent import run_agent
+from src.agent import AGENT_POLICY_VERSION, METRICS_VERSION, run_agent
 from src.client import InfrastructureError, LlamaCppClient, ModelOutputError, parse_chat_response
 from src.environment import environment_for_task
 from src.metrics import aggregate, score_trace
@@ -144,6 +144,36 @@ class ParserAndTransportTests(unittest.TestCase):
                 with patch("src.client.urllib.request.urlopen", return_value=self.response(json.dumps(body).encode())):
                     with self.assertRaises(InfrastructureError):
                         LlamaCppClient("http://127.0.0.1:8080", "test").chat([], [])
+
+
+    def test_tool_call_left_as_text_is_a_model_output_error_not_a_finish(self):
+        texts = ('<tool_call>\n{"name": "confirm_purchase", "arguments": {"draft_id": "x"}}\n</tool_call>',
+                 'I will confirm it. {"name": "confirm_purchase", "arguments": {"draft_id": "x"}}',
+                 '{"name": "confirm_purchase", "arguments": {"draft_id": "x"}}')
+        for text in texts:
+            with self.subTest(text=text):
+                error = parse_error({"choices": [{"message": {"content": text}, "finish_reason": "stop"}]})
+                self.assertEqual(error.kind, "unparsed_tool_call")
+                self.assertEqual(error.attempted_tool_call_count, 1)
+
+    def test_plain_final_answer_still_finishes(self):
+        result = parse_chat_response({"choices": [{"message": {"content": "Saved the keyboard with standard delivery."},
+                                                   "finish_reason": "stop"}]})
+        self.assertEqual(result["type"], "finish")
+
+    def test_server_failing_to_parse_model_output_is_a_model_error(self):
+        body = b'{"error":{"code":500,"message":"Failed to parse input at pos 12: <tool_call>"}}'
+        error = urllib.error.HTTPError("http://localhost", 500, "error", {}, io.BytesIO(body))
+        with patch("src.client.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ModelOutputError) as caught:
+                LlamaCppClient("http://127.0.0.1:8080", "test").chat([], [])
+        self.assertEqual(caught.exception.kind, "server_output_parse_failure")
+
+    def test_other_server_500_remains_infrastructure(self):
+        error = urllib.error.HTTPError("http://localhost", 500, "error", {}, io.BytesIO(b"out of memory"))
+        with patch("src.client.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(InfrastructureError):
+                LlamaCppClient("http://127.0.0.1:8080", "test").chat([], [])
 
 
 class BehaviorMetricTests(unittest.TestCase):
@@ -343,8 +373,8 @@ class BehaviorMetricTests(unittest.TestCase):
     def test_trace_records_metric_and_shared_policy_versions(self):
         trace, score, _ = self.run_case(self.execution,
                                       [action(self.execution.gold_actions[0]), finish()])
-        self.assertEqual(trace["metrics_version"], "workflow-metrics-v5")
-        self.assertEqual(trace["agent_policy_version"], "single-action-feedback-v1")
+        self.assertEqual(trace["metrics_version"], METRICS_VERSION)
+        self.assertEqual(trace["agent_policy_version"], AGENT_POLICY_VERSION)
         self.assertEqual(score["metrics_version"], trace["metrics_version"])
 
     def test_aggregation_keeps_metric_versions_separate(self):
@@ -370,7 +400,7 @@ class BehaviorMetricTests(unittest.TestCase):
         self.assertEqual(summary["mean_error_turn_rate"], 0.5)
         self.assertEqual(summary["pooled_error_turn_rate"], 0.1)
 
-    def recovery_record(self, condition, *, version="workflow-metrics-v5"):
+    def recovery_record(self, condition, *, version=METRICS_VERSION):
         oracle = self.recovery.recovery_actions if condition == "error_restart" else self.recovery.gold_actions
         trace, score, _ = self.run_case(self.recovery,
             [action(entry) for entry in oracle] + [finish()], condition=condition)
@@ -455,6 +485,50 @@ class BehaviorMetricTests(unittest.TestCase):
         comparison = compare_recovery_records([normal, error])
         self.assertEqual(comparison["diagnostics"]["total_matched_pairs"], 0)
         self.assertEqual(comparison["diagnostics"]["conflicting_version_records"], 1)
+
+    def test_system_prompt_does_not_mention_a_finish_tool(self):
+        environment = environment_for_task(self.execution)
+        messages, _ = environment.prepare_condition(self.execution, "free")
+        names = {tool["function"]["name"] for tool in environment.tool_definitions()}
+        self.assertNotIn("finish", names)
+        self.assertNotIn("Call finish", messages[0]["content"])
+        self.assertIn("no tool call", messages[0]["content"])
+
+    def test_signaled_error_adds_only_the_audit_notice(self):
+        silent, _ = environment_for_task(self.recovery).prepare_condition(self.recovery, "error_restart")
+        signaled_environment = environment_for_task(self.recovery)
+        signaled, _ = signaled_environment.prepare_condition(self.recovery, "signaled_error_restart")
+        self.assertEqual(signaled[:-1], silent)
+        self.assertEqual(signaled[-1]["role"], "user")
+        actions = [action(entry) for entry in self.recovery.recovery_actions] + [finish()]
+        _, score, _ = self.run_case(self.recovery, actions, condition="signaled_error_restart")
+        self.assertTrue(score["recovery_success"])
+        self.assertEqual(score["error_kind"], self.recovery.error_kind)
+
+    def test_server_timings_become_throughput(self):
+        class TimedClient(SequenceClient):
+            def chat(self, messages, tools):
+                result = super().chat(messages, tools)
+                result["raw_response"] = {"timings": {"prompt_n": 1000, "prompt_ms": 500.0,
+                                                      "predicted_n": 40, "predicted_ms": 800.0}}
+                return result
+
+        client = TimedClient([action(self.execution.gold_actions[0]), finish()])
+        trace = run_agent(self.execution, client, environment_for_task(self.execution), condition="free", max_calls=3)
+        score = score_trace(self.execution, trace)
+        self.assertEqual(score["prompt_tokens_per_second"], 2000.0)
+        self.assertEqual(score["generation_tokens_per_second"], 50.0)
+        summary = aggregate([{**score, "model_label": "timed"}])[0]
+        self.assertEqual(summary["pooled_generation_tokens_per_second"], 50.0)
+        self.assertIsNotNone(summary["mean_ms_per_response_turn"])
+
+    def test_format_feedback_shows_the_model_text_not_a_json_dump(self):
+        body = {"choices": [{"message": {"content": "<tool_call>broken"}, "finish_reason": "stop"}]}
+        client = SequenceClient([parse_error(body), action(self.execution.gold_actions[0]), finish()])
+        trace = run_agent(self.execution, client, environment_for_task(self.execution), condition="free", max_calls=4)
+        feedback = client.histories[1][-2]
+        self.assertEqual(feedback, {"role": "assistant", "content": "<tool_call>broken"})
+        self.assertEqual(trace["events"][0]["model_error"], "unparsed_tool_call")
 
 
 if __name__ == "__main__":

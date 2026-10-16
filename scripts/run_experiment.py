@@ -21,9 +21,11 @@ from src.tasks import Task
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one condition against a llama.cpp server")
     parser.add_argument("--tasks", default=str(ROOT / "tasks" / "tasks.json"))
-    parser.add_argument("--condition", choices=["free", "normal_restart", "recovery", "error_restart"], required=True)
+    parser.add_argument("--condition", choices=["free", "normal_restart", "recovery", "error_restart", "signaled_error_restart"],
+                        required=True, help="recovery is an alias for error_restart (silent error); "
+                        "signaled_error_restart adds one generic audit notice after the same error")
     parser.add_argument("--task-type", choices=["all", "execution", "recovery"], default=None,
-                        help="Defaults to execution for free; recovery for normal_restart/error_restart. recovery is an alias for error_restart")
+                        help="Defaults to execution for free; recovery for normal_restart/error_restart/signaled_error_restart")
     parser.add_argument("--model-label", required=True, help="Label recorded in results, e.g. FP16, Q8, Q4")
     parser.add_argument("--api-model", default="local", help="Model name accepted by llama-server")
     parser.add_argument("--base-url", default="http://127.0.0.1:18080")
@@ -53,6 +55,17 @@ def parse_args() -> argparse.Namespace:
                         help="Create once, then require the same model-independent settings for every precision and condition")
     parser.add_argument("--max-calls", type=int, default=None, help="Fixed model response-turn cap, including finish/invalid responses; otherwise normal horizon plus shared extra turns")
     parser.add_argument("--recovery-budget", type=int, default=3, help="Shared extra response turns above normal horizon, identical in both recovery branches (default: 3)")
+    parser.add_argument("--error-kind", choices=["all", "violating_candidate", "wrong_option"], default="all",
+                        help="Error family for error_restart/signaled_error_restart; 'all' runs every family "
+                        "for each selected fixture (normal_restart ignores it)")
+    parser.add_argument("--kv-cache-type", default="f16",
+                        help="KV cache type the server was started with (--cache-type-k/-v), recorded as an experimental factor; "
+                        "use the same value for both K and V, e.g. f16, q8_0, q4_0")
+    parser.add_argument("--server-command", default=None,
+                        help="Exact llama-server command line used for this run, stored in the results for provenance")
+    parser.add_argument("--cache-prompt", action="store_true",
+                        help="Reuse the server prompt cache between responses (deployment-like latency). Off by default; "
+                        "a different value requires a separate --settings-lock series")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--horizon", type=int, choices=[1, 3, 5], default=None,
                         help="Select the required remaining horizon before applying --limit")
@@ -113,8 +126,11 @@ def main() -> int:
     if args.recovery_budget < 0 or (args.max_calls is not None and args.max_calls < 1):
         raise SystemExit("Call budgets must be positive (extra budget may be zero).")
     if any((args.condition == "free" and task.task_type != "execution") or
-           (args.condition == "error_restart" and task.schema_version != "recovery-v2") for task in tasks):
-        raise SystemExit("free requires execution tasks; error_restart requires recovery-v2 tasks.")
+           (args.condition in {"error_restart", "signaled_error_restart"} and task.schema_version != "recovery-v3")
+           for task in tasks):
+        raise SystemExit("free requires execution tasks; error_restart/signaled_error_restart require recovery-v3 tasks.")
+    if not args.kv_cache_type.strip() or any(character.isspace() for character in args.kv_cache_type):
+        raise SystemExit("--kv-cache-type must be one token such as f16, q8_0 or q4_0")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     output = Path(args.output or ROOT / "results" / f"{args.model_label}_{args.condition}_{timestamp}.jsonl")
     report_path = output.with_suffix(".preflight.json")
@@ -139,6 +155,8 @@ def main() -> int:
         raise SystemExit("--gpu-index must be a nonnegative integer")
     metadata.update({"condition": args.condition, "task_type": task_type, "gpu_index": args.gpu_index,
                      "max_calls": args.max_calls, "shared_extra_action_turns": args.recovery_budget,
+                     "kv_cache_type": args.kv_cache_type, "server_command": args.server_command,
+                     "error_kind_selection": args.error_kind if args.condition not in {"free", "normal_restart"} else None,
                      "dataset_language": validation["language"],
                      "dataset_version": validation["dataset_version"],
                      "dataset_sha256": validation["dataset_sha256"],
@@ -149,7 +167,8 @@ def main() -> int:
                                         "selected_task_ids": [task.task_id for task in tasks]},
                      "dataset_validation": {"valid": True, "validator_version": validation["validator_version"]}})
     client = LlamaCppClient(args.base_url, args.api_model, seed=args.seed, temperature=args.temperature,
-                            max_tokens=args.max_tokens, timeout_seconds=args.timeout_seconds)
+                            max_tokens=args.max_tokens, timeout_seconds=args.timeout_seconds,
+                            cache_prompt=args.cache_prompt)
     metadata["api_model"] = args.api_model
     print(f"Checking server/settings lock, then warming up with {args.warmup_requests} held-out requests...", file=sys.stderr, flush=True)
     try:
@@ -174,9 +193,10 @@ def main() -> int:
         server_pid=args.server_pid,
         server_ram_sample_interval_ms=args.ram_sample_interval_ms,
         gpu_index=args.gpu_index,
+        error_kinds=None if args.error_kind == "all" else [args.error_kind],
     )
     scores = [record["score"] for record in records]
-    print(json.dumps({"output": str(output), "selected_count": len(tasks),
+    print(json.dumps({"output": str(output), "selected_count": len(tasks), "run_count": len(records),
                       "selected_task_ids": [task.task_id for task in tasks],
                       "summary": aggregate(scores)}, ensure_ascii=False, indent=2))
     return 0

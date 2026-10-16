@@ -22,6 +22,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.dataset_spec import DATASET_VERSION, EXECUTION_TASKS, RECOVERY_TASKS, TOTAL_TASKS  # noqa: E402
 from src.dataset_validation import (  # noqa: E402
     DatasetValidationError,
     load_validated_tasks,
@@ -64,9 +65,9 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_checked_in_english_dataset_is_valid(self) -> None:
         report = validate_dataset(self.task_path)
         self.assertIs(report.get("valid"), True)
-        self.assertEqual(len(self.rows), 100)
-        self.assertEqual(sum(row["task_type"] == "execution" for row in self.rows), 60)
-        self.assertEqual(sum(row["task_type"] == "recovery" for row in self.rows), 40)
+        self.assertEqual(len(self.rows), TOTAL_TASKS)
+        self.assertEqual(sum(row["task_type"] == "execution" for row in self.rows), EXECUTION_TASKS)
+        self.assertEqual(sum(row["task_type"] == "recovery" for row in self.rows), RECOVERY_TASKS)
         self.assertTrue(all(row["language"] == "en" for row in self.rows))
 
     def test_shared_loading_api_rejects_invalid_dataset(self) -> None:
@@ -113,7 +114,7 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         record = json.loads(output.read_text(encoding="utf-8"))
         self.assertTrue(record["metadata"]["dataset_validation"]["valid"])
         self.assertEqual(record["metadata"]["dataset_language"], "en")
-        self.assertEqual(record["metadata"]["dataset_version"], "workflow-en-v3")
+        self.assertEqual(record["metadata"]["dataset_version"], DATASET_VERSION)
         self.assertEqual(record["task"]["language"], "en")
         self.assertEqual(record["trace"]["dataset_language"], "en")
         self.assertTrue(json.dumps(record["trace"]["initial_messages"], ensure_ascii=False).isascii())
@@ -199,7 +200,7 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_non_english_injected_record_is_rejected(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery")
-        recovery["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "잘못된_초안"
+        recovery["error_variants"]["violating_candidate"]["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "잘못된_초안"
         self.assert_rejected(rows)
 
     def test_question_must_expose_the_required_request_id(self) -> None:
@@ -259,20 +260,21 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_invisible_internal_error_injection_is_rejected(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery")
-        recovery["error_injection"] = {"type": "stale_result", "last_result": {"ok": True}}
+        recovery["error_variants"]["violating_candidate"]["error_injection"] = {"type": "stale_result", "last_result": {"ok": True}}
         self.assert_rejected(rows)
 
     def test_nonexistent_injected_draft_is_rejected(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery")
-        recovery["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "draft_does_not_exist"
+        recovery["error_variants"]["violating_candidate"]["error_injection"]["actions"][-1]["arguments"]["draft_id"] = "draft_does_not_exist"
         self.assert_rejected(rows)
 
     def test_repair_oracle_must_replace_the_injected_wrong_result(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
-        recovery["recovery_actions"] = copy.deepcopy(recovery["recovery_actions"][-1:])
-        recovery["recovery_min_calls"] = 1
+        variant = recovery["error_variants"]["violating_candidate"]
+        variant["recovery_actions"] = copy.deepcopy(variant["recovery_actions"][-1:])
+        variant["recovery_min_calls"] = 1
         self.assert_rejected(rows)
 
     def test_error_must_be_saved_for_the_same_request(self) -> None:
@@ -280,13 +282,15 @@ class DatasetValidationRegressionTests(unittest.TestCase):
         # not a mistake the model can make on its own and must stay rejected.
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
-        recovery["error_injection"] = {"type": "extra_saved_record", "action": recovery["error_injection"]["actions"][-1]}
+        variant = recovery["error_variants"]["violating_candidate"]
+        variant["error_injection"] = {"type": "extra_saved_record", "action": variant["error_injection"]["actions"][-1]}
         self.assert_rejected(rows)
 
     def test_injected_error_must_violate_the_request(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
-        recovery["error_injection"]["actions"] = copy.deepcopy(recovery["recovery_actions"])
+        variant = recovery["error_variants"]["violating_candidate"]
+        variant["error_injection"]["actions"] = copy.deepcopy(variant["recovery_actions"])
         self.assert_rejected(rows)
 
     def test_free_context_cannot_be_presented_as_model_history(self) -> None:
@@ -346,8 +350,40 @@ class DatasetValidationRegressionTests(unittest.TestCase):
     def test_repair_must_cost_the_normal_remaining_calls(self) -> None:
         rows = copy.deepcopy(self.rows)
         recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 3)
-        recovery["recovery_min_calls"] = 2
-        self.assert_rejected_at(rows, "schema", "normal and repair minimums must both equal the horizon")
+        variant = recovery["error_variants"]["violating_candidate"]
+        variant["recovery_min_calls"] = 2
+        self.assert_rejected_at(rows, "schema", "recovery oracle length differs from recovery_min_calls")
+        # A shorter but internally consistent repair is still not the violating_candidate repair.
+        variant["recovery_actions"] = copy.deepcopy(variant["recovery_actions"][1:])
+        self.assert_rejected_at(rows, "recovery_semantics", "repair oracle is not the minimal path")
+
+    def test_wrong_option_error_must_keep_the_correct_candidate(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery" and row["horizon"] == 1)
+        violating = recovery["error_variants"]["violating_candidate"]["error_injection"]["actions"]
+        recovery["error_variants"]["wrong_option"]["error_injection"]["actions"] = copy.deepcopy(violating)
+        self.assert_rejected_at(rows, "recovery_semantics", "wrong_option")
+
+    def test_every_recovery_fixture_needs_both_error_kinds(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery")
+        del recovery["error_variants"]["wrong_option"]
+        self.assert_rejected_at(rows, "schema", "error_variants must be exactly")
+
+    def test_error_variant_label_must_match_its_injection(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        recovery = next(row for row in rows if row["task_type"] == "recovery")
+        recovery["error_variants"]["wrong_option"]["error_injection"]["error_kind"] = "violating_candidate"
+        self.assert_rejected_at(rows, "schema", "mislabeled")
+
+    def test_model_input_cannot_carry_float_artifacts(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        for row in rows:
+            if row["base_id"].startswith("shopping_002"):
+                for candidate in row["execution_spec"]["candidates"]:
+                    if candidate["summary"]["rating"] == 4.1:
+                        candidate["summary"]["rating"] = 4.2 - 0.1
+        self.assert_rejected(rows)
 
     def test_violating_candidate_must_rank_first_without_constraints(self) -> None:
         # A violator that is also last by the ranking rule makes the injected

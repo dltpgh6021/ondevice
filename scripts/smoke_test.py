@@ -34,11 +34,14 @@ def main() -> int:
                            for action in recovery_task.gold_actions] + [finish()],
         "error_restart": [tool(action["tool"], action.get("arguments", {}))
                           for action in recovery_task.recovery_actions] + [finish()],
+        "signaled_error_restart": [tool(action["tool"], action.get("arguments", {}))
+                                   for action in recovery_task.recovery_actions] + [finish()],
     }
     task_by_condition = {
         "free": execution_task,
         "normal_restart": recovery_task,
         "error_restart": recovery_task,
+        "signaled_error_restart": recovery_task,
     }
 
     output_dir = ROOT / "results"
@@ -78,10 +81,15 @@ def main() -> int:
         execution_count += 1
     print(f"Execution scripted replay: {execution_count}/{execution_count} passed (not an LLM quality test)")
     recovery_count = 0
-    for task in tasks:
-        if task.task_type != "recovery":
+    for fixture in tasks:
+        if fixture.task_type != "recovery":
             continue
-        for condition, oracle in (("normal_restart", task.gold_actions), ("error_restart", task.recovery_actions)):
+        runs = [("normal_restart", fixture, fixture.gold_actions)]
+        for kind in fixture.error_variants or {}:
+            task = fixture.with_error_kind(kind)
+            runs += [("error_restart", task, task.recovery_actions),
+                     ("signaled_error_restart", task, task.recovery_actions)]
+        for condition, task, oracle in runs:
             actions = [tool(action["tool"], action.get("arguments", {})) for action in oracle] + [finish()]
             trace = run_agent(task, ScriptedClient(actions), environment_for_task(task),
                               condition=condition, max_calls=task.horizon + 3)
@@ -89,12 +97,13 @@ def main() -> int:
             if not score["strict_success"] or score["tool_call_count"] != len(oracle) or score.get("recovery_error_count"):
                 print(f"SMOKE TEST FAILED: {task.task_id}/{condition}", file=sys.stderr)
                 return 1
-            if condition == "error_restart" and (score["extra_calls_over_oracle"] != 0
+            if condition != "normal_restart" and (score["extra_calls_over_oracle"] != 0
+                                                 or score["error_kind"] != task.error_kind
                                                  or score["recovery_error_resolved"] is not True):
                 print(f"SMOKE METRICS FAILED: {task.task_id}", file=sys.stderr)
                 return 1
             recovery_count += 1
-    print(f"Recovery paired scripted replay: {recovery_count}/{recovery_count} passed")
+    print(f"Recovery scripted replay (normal + every error kind, silent and signaled): {recovery_count}/{recovery_count} passed")
     print("SMOKE TEST PASSED")
     return 0
 

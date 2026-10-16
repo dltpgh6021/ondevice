@@ -1,4 +1,4 @@
-"""Create Q8/Q4 GGUF variants from one FP16/BF16 GGUF source.
+"""Create Q8/Q4 (and optional extra) GGUF variants from one FP16/BF16 GGUF source.
 
 This script deliberately quantizes both variants from the same unquantized
 source file. It also writes a manifest so that model provenance, file sizes,
@@ -97,6 +97,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-quantization", default="F16")
     parser.add_argument("--q8-type", default="Q8_0")
     parser.add_argument("--q4-type", default="Q4_K_M")
+    parser.add_argument("--extra-types", default="",
+                        help="Comma-separated extra llama-quantize types for a precision/size trade-off curve, "
+                        "e.g. Q6_K,Q5_K_M,Q3_K_M,Q2_K (all made from the same source)")
     parser.add_argument("--quantizer", default="llama-quantize")
     parser.add_argument("--llama", default="llama", help="llama version 조회에 사용할 실행 파일")
     parser.add_argument("--threads", type=int, default=0, help="quantizer thread 수; 0이면 기본값 사용")
@@ -122,9 +125,9 @@ def main() -> int:
     llama = executable(args.llama)
 
     stem = source.stem
-    q8_path = output_dir / f"{stem}-{args.q8_type}.gguf"
-    q4_path = output_dir / f"{stem}-{args.q4_type}.gguf"
-    outputs = [(q8_path, args.q8_type), (q4_path, args.q4_type)]
+    extra_types = [item.strip() for item in args.extra_types.split(",") if item.strip()]
+    types = list(dict.fromkeys([args.q8_type, args.q4_type, *extra_types]))
+    outputs = [(output_dir / f"{stem}-{quantization}.gguf", quantization) for quantization in types]
     if not args.force:
         existing = [str(path) for path, _ in outputs if path.exists()]
         if existing:
@@ -165,6 +168,24 @@ def main() -> int:
             raise SystemExit(f"비교용 공식 모델을 찾을 수 없습니다: {reference_path}")
         reference_variants.append(file_info(reference_path, label=label, quantization=quantization))
 
+    # Keep variants already recorded (e.g. made in an earlier run) unless this
+    # run replaced the same file; never drop provenance silently.
+    if manifest_path.exists():
+        try:
+            previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"기존 manifest를 읽을 수 없습니다: {manifest_path} ({exc})") from exc
+        if previous.get("source_model", {}).get("sha256") not in {None, variants[0]["sha256"]}:
+            raise SystemExit("기존 manifest의 source 모델 hash가 다릅니다. 다른 --manifest 경로를 사용하세요.")
+        produced = {item["filename"] for item in variants}
+        variants += [item for item in previous.get("variants", []) if item.get("filename") not in produced]
+        referenced = {item["filename"] for item in reference_variants}
+        reference_variants += [item for item in previous.get("reference_variants", [])
+                               if item.get("filename") not in referenced]
+        previous_commands = [item for item in previous.get("toolchain", {}).get("commands", [])
+                             if item.get("output") not in {entry["output"] for entry in commands}]
+        commands = previous_commands + commands
+
     manifest = {
         "schema_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -181,10 +202,11 @@ def main() -> int:
             "quantizer_executable": quantizer,
             "q8_type": args.q8_type,
             "q4_type": args.q4_type,
+            "extra_types": extra_types,
             "threads": args.threads if args.threads > 0 else "default",
             "commands": commands,
         },
-        "experiment_note": "Q8과 Q4는 동일한 unquantized source GGUF에서 각각 독립적으로 생성했습니다.",
+        "experiment_note": "모든 양자화 변형은 동일한 unquantized source GGUF에서 각각 독립적으로 생성했습니다.",
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

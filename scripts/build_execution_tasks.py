@@ -1,4 +1,4 @@
-"""Build 60 matched execution fixtures from 20 inspectable scenario definitions.
+"""Build matched execution fixtures (h1/h3/h5) from inspectable scenario definitions.
 
 The checked-in JSON is the runtime input. This script prints regenerated data
 or checks that it matches; it never overwrites recovery tasks or results.
@@ -10,15 +10,15 @@ import argparse
 import copy
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.execution_environment import WORKFLOWS, candidate_is_eligible, select_target, workflow_chain
+from src.dataset_spec import BASE_SCENARIOS, DATASET_VERSION, EXECUTION_TASKS, SCENARIOS_PER_DOMAIN
 from src.tasks import stable_hash
-
-DATASET_VERSION = "workflow-en-v3"
 
 
 def h1_seed_actions(spec: dict, index: int) -> list[dict]:
@@ -37,22 +37,70 @@ def h1_seed_actions(spec: dict, index: int) -> list[dict]:
     wrong_kind = workflow_chain(spec, best, wrong_option)
     wrong_candidate = workflow_chain(spec, ineligible, ineligible_option)
     prepares = [correct[3], wrong_kind[3], wrong_candidate[3]]
-    # Offset by domain so the correct draft's position is balanced (7/7/6 over 20).
-    rotation = (index + list(WORKFLOWS).index(spec["domain"])) % len(prepares)
+    # Balanced over each domain and decorrelated from the candidate position.
+    domain_index = list(WORKFLOWS).index(spec["domain"])
+    rotation = (index + index // len(prepares) + 2 * domain_index + 1) % len(prepares)
     prepares = prepares[rotation:] + prepares[:rotation]
     return correct[:3] + [wrong_candidate[2]] + prepares
+
+
+# Fifteen rows per domain. The structural pattern (index % 5) decides the
+# ranking rule, which constraint the trap violates and whether a tie must be
+# broken by the secondary rule; the rows vary the content and magnitudes.
+SHOPPING = [
+    ("Keyboard", "keyboard", 100, 4.0), ("Mouse", "mouse", 60, 4.2), ("Headset", "headset", 150, 4.3),
+    ("Webcam", "webcam", 90, 4.1), ("USB hub", "usb_hub", 70, 4.0), ("Monitor", "monitor", 220, 4.2),
+    ("Laptop stand", "laptop_stand", 55, 4.1), ("Microphone", "microphone", 130, 4.3),
+    ("Speaker", "speaker", 85, 4.0), ("Charger", "charger", 65, 4.2), ("Desk lamp", "desk_lamp", 50, 4.1),
+    ("External SSD", "external_ssd", 140, 4.0), ("Router", "router", 120, 4.2),
+    ("Tablet case", "tablet_case", 45, 4.1), ("Ring light", "ring_light", 75, 4.3),
+]
+SCHEDULE = [
+    ("Team meeting", "2026-10-20", 4, 9, 17), ("Paper reading group", "2026-10-21", 3, 10, 18),
+    ("Experiment review meeting", "2026-10-22", 5, 9, 16), ("Project presentation rehearsal", "2026-10-23", 5, 13, 19),
+    ("Weekly retrospective", "2026-10-24", 4, 11, 18), ("Design critique", "2026-10-26", 3, 10, 15),
+    ("Budget planning session", "2026-10-27", 6, 8, 14), ("Lab safety briefing", "2026-10-28", 4, 14, 18),
+    ("Mentoring session", "2026-10-29", 2, 9, 12), ("Code review meeting", "2026-10-30", 5, 15, 20),
+    ("Thesis progress check", "2026-11-02", 3, 11, 16), ("Hackathon kickoff", "2026-11-03", 8, 9, 13),
+    ("Client demo preparation", "2026-11-04", 4, 13, 18), ("Reading club", "2026-11-05", 6, 16, 21),
+    ("Quarterly planning", "2026-11-06", 7, 10, 17),
+]
+TRAVEL = [
+    ("Seoul", "Busan", "2026-10-20", 100, 8), ("Seoul", "Daejeon", "2026-10-21", 60, 9),
+    ("Busan", "Daegu", "2026-10-22", 50, 10), ("Daejeon", "Seoul", "2026-10-23", 70, 13),
+    ("Daegu", "Seoul", "2026-10-24", 90, 11), ("Seoul", "Gwangju", "2026-10-26", 80, 7),
+    ("Incheon", "Busan", "2026-10-27", 110, 12), ("Gwangju", "Seoul", "2026-10-28", 75, 15),
+    ("Busan", "Gangneung", "2026-10-29", 95, 9), ("Suwon", "Daegu", "2026-10-30", 65, 14),
+    ("Seoul", "Jeonju", "2026-11-02", 55, 10), ("Daegu", "Gwangju", "2026-11-03", 45, 8),
+    ("Gangneung", "Seoul", "2026-11-04", 85, 16), ("Jeonju", "Busan", "2026-11-05", 70, 11),
+    ("Ulsan", "Seoul", "2026-11-06", 120, 6),
+]
+PLACE = [
+    ("Museum", "museum", "Seoul", 30, 25), ("Cafe", "cafe", "Seoul", 20, 20),
+    ("Restaurant", "restaurant", "Busan", 40, 30), ("Park", "park", "Seoul", 10, 25),
+    ("Gallery", "gallery", "Busan", 25, 20), ("Aquarium", "aquarium", "Busan", 35, 30),
+    ("Bookstore", "bookstore", "Seoul", 15, 15), ("Botanical garden", "botanical_garden", "Daejeon", 20, 35),
+    ("Night market", "night_market", "Busan", 12, 18), ("Science center", "science_center", "Daejeon", 28, 22),
+    ("Palace", "palace", "Seoul", 18, 25), ("Bakery", "bakery", "Jeonju", 16, 14),
+    ("Concert hall", "concert_hall", "Seoul", 45, 20), ("Library", "library", "Daegu", 10, 16),
+    ("Observatory", "observatory", "Gangneung", 22, 28),
+]
+for _table in (SHOPPING, SCHEDULE, TRAVEL, PLACE):
+    assert len(_table) == SCENARIOS_PER_DOMAIN, "one row per scenario index"
+
+
+def _rating(value: float) -> float:
+    """One decimal place, so model-facing JSON never shows float artifacts."""
+    return round(value, 1)
 
 
 def scenario(domain: str, index: int) -> dict:
     base_id = f"{domain}_{index + 1:03d}"
     request_id = f"request_{stable_hash(base_id)[:12]}"
+    pattern = index % 5
     if domain == "shopping":
-        label, category, budget, minimum = [
-            ("Keyboard", "keyboard", 100, 4.0), ("Mouse", "mouse", 60, 4.2),
-            ("Headset", "headset", 150, 4.3), ("Webcam", "webcam", 90, 4.1),
-            ("USB hub", "usb_hub", 70, 4.0),
-        ][index]
-        cheap_first = index in (1, 4)
+        label, category, budget, minimum = SHOPPING[index]
+        cheap_first = pattern in (1, 4)
         constraints = {"max_price": budget, "min_rating": minimum}
         ranking = [{"field": "price" if cheap_first else "rating", "direction": "min" if cheap_first else "max"},
                    {"field": "rating" if cheap_first else "price", "direction": "max" if cheap_first else "min"}]
@@ -68,15 +116,9 @@ def scenario(domain: str, index: int) -> dict:
         result_fields = {"category": category, "quantity": 1, "delivery_city": "Seoul"}
         goal = "Select the product and delivery option that satisfy the purchase request, then confirm and save the purchase item."
     elif domain == "schedule":
-        title, date, minimum_capacity, earliest, latest = [
-            ("Team meeting", "2026-10-20", 4, 9, 17),
-            ("Paper reading group", "2026-10-21", 3, 10, 18),
-            ("Experiment review meeting", "2026-10-22", 5, 9, 16),
-            ("Project presentation rehearsal", "2026-10-23", 5, 13, 19),
-            ("Weekly retrospective", "2026-10-24", 4, 11, 18),
-        ][index]
+        title, day, minimum_capacity, earliest, latest = SCHEDULE[index]
         constraints = {"min_capacity": minimum_capacity, "min_start_hour": earliest, "max_start_hour": latest}
-        walk_first = index in (1, 3)
+        walk_first = pattern in (1, 3)
         ranking = [{"field": "walking_min" if walk_first else "start_hour", "direction": "min"},
                    {"field": "start_hour" if walk_first else "walking_min", "direction": "min"}]
         values = [
@@ -87,20 +129,14 @@ def scenario(domain: str, index: int) -> dict:
         option_kinds = ["in_person", "hybrid"]
         required = option_kinds[index % 2]
         rule = "the slot with the shortest walking time, breaking ties by the earliest start hour" if walk_first else "the slot with the earliest start hour, breaking ties by the shortest walking time"
-        description = f"Schedule '{title}' for one hour on {date}. Consider available slots with capacity of at least {minimum_capacity} and a start hour from {earliest} through {latest}, inclusive. Select {rule}. Use the {required} meeting format."
-        result_fields = {"title": title, "date": date, "duration_min": 60, "city": "Seoul"}
+        description = f"Schedule '{title}' for one hour on {day}. Consider available slots with capacity of at least {minimum_capacity} and a start hour from {earliest} through {latest}, inclusive. Select {rule}. Use the {required} meeting format."
+        result_fields = {"title": title, "date": day, "duration_min": 60, "city": "Seoul"}
         label = title
         goal = "Confirm and save an event that satisfies the date, start-hour, capacity, and meeting-format requirements in the scheduling request."
     elif domain == "travel":
-        origin, destination, date, budget, earliest = [
-            ("Seoul", "Busan", "2026-10-20", 100, 8),
-            ("Seoul", "Daejeon", "2026-10-21", 60, 9),
-            ("Busan", "Daegu", "2026-10-22", 50, 10),
-            ("Daejeon", "Seoul", "2026-10-23", 70, 13),
-            ("Daegu", "Seoul", "2026-10-24", 90, 11),
-        ][index]
+        origin, destination, day, budget, earliest = TRAVEL[index]
         constraints = {"max_price": budget, "min_depart_hour": earliest, "max_depart_hour": earliest + 4}
-        cheap_first = index in (1, 4)
+        cheap_first = pattern in (1, 4)
         ranking = [{"field": "price" if cheap_first else "duration_min", "direction": "min"},
                    {"field": "duration_min" if cheap_first else "price", "direction": "min"}]
         values = [
@@ -111,18 +147,14 @@ def scenario(domain: str, index: int) -> dict:
         option_kinds = ["refundable", "nonrefundable"]
         required = option_kinds[index % 2]
         rule = "the option with the lowest base fare, breaking ties by the shortest travel duration" if cheap_first else "the option with the shortest travel duration, breaking ties by the lowest base fare"
-        description = f"Travel from {origin} to {destination} on {date}. Consider options with a base fare of at most {budget} and a departure hour from {earliest} through {earliest + 4}, inclusive. Select {rule}. Use the {required} fare option."
-        result_fields = {"origin": origin, "destination": destination, "date": date, "passengers": 1}
+        description = f"Travel from {origin} to {destination} on {day}. Consider options with a base fare of at most {budget} and a departure hour from {earliest} through {earliest + 4}, inclusive. Select {rule}. Use the {required} fare option."
+        result_fields = {"origin": origin, "destination": destination, "date": day, "passengers": 1}
         label = f"{origin} to {destination}"
         goal = "Confirm and save an itinerary that satisfies the route, date, base-fare, departure-hour, and fare-option requirements in the travel request."
     else:
-        label, category, city, budget, max_walk = [
-            ("Museum", "museum", "Seoul", 30, 25), ("Cafe", "cafe", "Seoul", 20, 20),
-            ("Restaurant", "restaurant", "Busan", 40, 30), ("Park", "park", "Seoul", 10, 25),
-            ("Gallery", "gallery", "Busan", 25, 20),
-        ][index]
+        label, category, city, budget, max_walk = PLACE[index]
         constraints = {"max_fee": budget, "max_walking_min": max_walk}
-        walk_first = index in (1, 3)
+        walk_first = pattern in (1, 3)
         ranking = [{"field": "walking_min" if walk_first else "rating", "direction": "min" if walk_first else "max"},
                    {"field": "rating" if walk_first else "walking_min", "direction": "max" if walk_first else "min"}]
         values = [
@@ -134,7 +166,8 @@ def scenario(domain: str, index: int) -> dict:
         required = option_kinds[index % 2]
         rule = "the place with the shortest walking time, breaking ties by the highest rating" if walk_first else "the highest-rated place, breaking ties by the shortest walking time"
         description = f"Find a {category} in {city}. Consider candidates with a base admission fee of at most {budget} and a walking time of at most {max_walk} minutes. Select {rule}. Choose the {required} visit area."
-        result_fields = {"city": city, "category": category, "date": f"2026-10-{20 + index}", "visitors": 1}
+        visit_day = (date(2026, 10, 20) + timedelta(days=index)).isoformat()
+        result_fields = {"city": city, "category": category, "date": visit_day, "visitors": 1}
         goal = "Confirm and save a visit plan that satisfies the location, admission-fee, walking-time, and visit-area requirements in the visit request."
 
     # Vary the violated constraint and include primary-score ties that require
@@ -142,32 +175,32 @@ def scenario(domain: str, index: int) -> dict:
     # The violating candidate (values[0]) always ranks first when constraints
     # are ignored, so choosing it is the plausible "forgot a constraint" mistake.
     if domain == "shopping":
-        if index in (1, 4):
-            values[0] = {"price": budget - 35 if index == 1 else budget - 40, "rating": minimum - 0.1}
-        if index == 2:
+        if pattern in (1, 4):
+            values[0] = {"price": budget - 35 if pattern == 1 else budget - 40, "rating": _rating(minimum - 0.1)}
+        if pattern == 2:
             values[2]["rating"] = values[1]["rating"]
-        if index == 4:
+        if pattern == 4:
             values[2]["price"] = values[1]["price"]
     elif domain == "schedule":
-        if index == 1:
+        if pattern == 1:
             values[0] = {"capacity": minimum_capacity + 1, "start_hour": earliest - 1, "walking_min": 2}
-        if index == 2:
+        if pattern == 2:
             values[2]["start_hour"] = values[1]["start_hour"]
-        if index == 3:
+        if pattern == 3:
             values[1]["walking_min"] = values[2]["walking_min"]
     elif domain == "travel":
-        if index in (1, 4):
+        if pattern in (1, 4):
             values[0] = {"price": budget - 30, "depart_hour": earliest - 1, "duration_min": 65}
-        if index == 2:
+        if pattern == 2:
             values[2]["duration_min"] = values[1]["duration_min"]
-        if index == 4:
+        if pattern == 4:
             values[2]["price"] = values[1]["price"]
     else:
-        if index == 0:
+        if pattern == 0:
             values[0] = {"fee": max(0, budget - 10), "walking_min": max_walk + 5, "rating": 4.9}
-        if index == 2:
+        if pattern == 2:
             values[2]["rating"] = values[1]["rating"]
-        if index == 3:
+        if pattern == 3:
             values[1]["walking_min"] = values[2]["walking_min"]
 
     request = {
@@ -175,28 +208,42 @@ def scenario(domain: str, index: int) -> dict:
         "ranking_note": "Apply all constraints first. Compare ranking fields in listed order, using later fields to break ties. The full ranking tuple uniquely selects one eligible candidate.",
         "required_option_kind": required, "result_fields": result_fields,
     }
+    domain_index = list(WORKFLOWS).index(domain)
     candidates = []
     for number, value in enumerate(values):
         candidate_id = f"candidate_{stable_hash([base_id, number])[:12]}"
         options = [{"option_id": f"option_{stable_hash([base_id, number, kind])[:12]}",
                     "kind": kind, "available": True} for kind in option_kinds]
-        # Change option and candidate ordering deterministically across scenarios.
-        if (index + number) % 2:
-            options.reverse()
-        label_number = (number + index + list(WORKFLOWS).index(domain)) % 3
+        label_number = (number + index + domain_index) % 3
         candidates.append({"candidate_id": candidate_id, "summary": {"label": f"{label} candidate {chr(65 + label_number)}", **value}, "options": options})
-    rotation = index % len(candidates)
-    candidates = candidates[rotation:] + candidates[:rotation]
+
+    # Place the correct candidate and its requested option at positions that
+    # are balanced within each domain, so no list position predicts the answer.
+    probe = {"domain": domain, "request_id": request_id, "request": request, "candidates": candidates}
+    target, _ = select_target(probe)
+    violating = next(item for item in candidates if not candidate_is_eligible(item, probe))
+    other = next(item for item in candidates if item is not target and item is not violating)
+    target_slot = (index + domain_index) % 3
+    violating_slot = (target_slot + 1 + (index // 3 + domain_index) % 2) % 3
+    other_slot = 3 - target_slot - violating_slot
+    ordered: list[dict] = [{}, {}, {}]
+    ordered[target_slot], ordered[violating_slot], ordered[other_slot] = target, violating, other
+    for number, candidate in enumerate(ordered):
+        if candidate is target:
+            required_first = (index + domain_index) % 2 == 0
+        else:
+            required_first = (index + number + domain_index) % 2 == 1
+        candidate["options"].sort(key=lambda item: (item["kind"] != required) if required_first else (item["kind"] == required))
     return {"base_id": base_id, "domain": domain, "request_id": request_id,
             "query": f"Request ID: {request_id}. {goal} Continue from any information or tool results already provided. When finished, the entire saved result set must contain only one record: the correct result for this request.",
-            "request": request, "candidates": candidates}
+            "request": request, "candidates": ordered}
 
 
 def build_execution_tasks() -> list[dict]:
     tasks = []
     for horizon in (1, 3, 5):
         for domain in WORKFLOWS:
-            for index in range(5):
+            for index in range(SCENARIOS_PER_DOMAIN):
                 case = scenario(domain, index)
                 spec = {key: copy.deepcopy(value) for key, value in case.items() if key not in {"base_id", "query"}}
                 selected, option = select_target(spec)
@@ -219,8 +266,8 @@ def build_execution_tasks() -> list[dict]:
 
 def catalog_markdown() -> str:
     lines = [
-        "# Execution tasks v2: 20 scenarios x horizons 1, 3, and 5", "",
-        "The 60 tasks are three starting-information conditions for the same 20 scenarios, rather than 60 independent questions.",
+        f"# Execution tasks v2: {BASE_SCENARIOS} scenarios x horizons 1, 3, and 5", "",
+        f"The {EXECUTION_TASKS} tasks are three starting-information conditions for the same {BASE_SCENARIOS} scenarios, rather than {EXECUTION_TASKS} independent questions.",
         "Each scenario keeps the same original question. Shorter conditions seed earlier lookup results into the environment and show them in the user message.",
         "They are never presented as the model's own earlier tool calls; that format is reserved for the matched recovery fixtures (normal_restart / error_restart).", "",
         "| Horizon | Information provided in the user message | Required model calls |", "|---|---|---|",
@@ -228,18 +275,19 @@ def catalog_markdown() -> str:
         "| 3 | Request and candidates | Read details -> prepare -> confirm |",
         "| 5 | None | Read request -> find candidates -> read details -> prepare -> confirm |", "",
         "At h1 the two wrong drafts are the best candidate with the other option kind and the constraint-violating candidate with the requested option kind, so a selection decision remains.",
+        "Within every domain the positions of the correct candidate, the trap, the requested option and the correct h1 draft are balanced, so no list position predicts the answer.",
         "Confirmation requires an existing draft_id created by preparation. Lookup identifiers must likewise be issued by the preceding tools before those resources exist.",
         "All horizons expose the same tool list. Calling inspect_state after completion does not change the final success judgment.", "",
         "Every row below has three tasks with the suffixes `_h1`, `_h3`, and `_h5`. Actual questions, tool results, and reference answers are stored in tasks.json.", "",
         "| Base ID | Request |", "|---|---|",
     ]
     for domain in WORKFLOWS:
-        for index in range(5):
+        for index in range(SCENARIOS_PER_DOMAIN):
             case = scenario(domain, index)
             lines.append(f"| {case['base_id']} | {case['request']['description']} |")
     lines += ["", "## Interpretation and limits", "",
               "This design controls the number of remaining dependent calls in the same workflow. Starting information also differs, so it does not isolate only the length of a general real-world task.",
-              "Error accumulation and first-error position from a cold start are analyzed with h5. Treat the 20 base scenarios as the analysis units and compare horizon conditions as matched observations.",
+              f"Error accumulation and first-error position from a cold start are analyzed with h5. Treat the {BASE_SCENARIOS} base scenarios as the analysis units and compare horizon conditions as matched observations.",
               "Recovery fixtures exist only for h1 and h3. An h5 normal_restart would start from the same empty state as free h5, so h5 is analyzed with free execution only.",
               "In every scenario the constraint-violating candidate ranks first when the constraints are ignored, so saving it is the plausible mistake of skipping a constraint check.",
               "All four domains currently use the same read-request -> search -> details -> prepare -> confirm workflow. Broader claims about agent behavior require more diverse tasks.",
@@ -266,7 +314,7 @@ def main() -> int:
         checked_in = [item for item in original if item.get("task_type", "execution") == "execution"]
         if checked_in != generated:
             raise SystemExit("Execution fixtures differ from the scenario definitions.")
-        print("Execution fixtures match all 20 scenario definitions (60 tasks).")
+        print(f"Execution fixtures match all {BASE_SCENARIOS} scenario definitions ({EXECUTION_TASKS} tasks).")
         return 0
     recovery = [item for item in original if item.get("task_type") == "recovery"]
     print(json.dumps(generated + recovery, ensure_ascii=False, indent=2))

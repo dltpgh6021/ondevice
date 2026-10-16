@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts import run_experiment
 from src.client import ScriptedClient
+from src.dataset_spec import BASE_SCENARIOS, DATASET_VERSION, EXECUTION_TASKS
 from src.tasks import load_tasks
 
 
@@ -26,7 +27,7 @@ class TaskSelectionTests(unittest.TestCase):
         cls.task_path = ROOT / "tasks" / "tasks.json"
         cls.tasks = load_tasks(cls.task_path)
         cls.validation = {
-            "language": "en", "dataset_version": "workflow-en-v3",
+            "language": "en", "dataset_version": DATASET_VERSION,
             "dataset_sha256": "offline-dataset-hash",
             "tasks_file_sha256": "offline-file-hash",
             "validator_version": "dataset-validator-v1",
@@ -42,17 +43,17 @@ class TaskSelectionTests(unittest.TestCase):
     def test_default_type_selection_preserves_original_order(self) -> None:
         actual = run_experiment.select_tasks(self.tasks, task_type="execution")
         self.assertEqual(actual, [task for task in self.tasks if task.task_type == "execution"])
-        self.assertEqual(len(actual), 60)
+        self.assertEqual(len(actual), EXECUTION_TASKS)
 
     def test_all_type_without_filters_preserves_all_120(self) -> None:
         self.assertEqual(run_experiment.select_tasks(self.tasks, task_type="all"), self.tasks)
 
-    def test_horizon_selects_20_tasks_of_each_requested_type(self) -> None:
+    def test_horizon_selects_one_task_per_scenario_of_each_requested_type(self) -> None:
         for task_type, horizons in (("execution", (1, 3, 5)), ("recovery", (1, 3))):
             for horizon in horizons:
                 with self.subTest(task_type=task_type, horizon=horizon):
                     selected = run_experiment.select_tasks(self.tasks, task_type=task_type, horizon=horizon)
-                    self.assertEqual(len(selected), 20)
+                    self.assertEqual(len(selected), BASE_SCENARIOS)
                     self.assertTrue(all(task.task_type == task_type and task.horizon == horizon for task in selected))
 
     def test_recovery_has_no_h5_fixture(self) -> None:
@@ -62,7 +63,7 @@ class TaskSelectionTests(unittest.TestCase):
     def test_all_type_intersects_horizon_without_reordering(self) -> None:
         selected = run_experiment.select_tasks(self.tasks, task_type="all", horizon=3)
         self.assertEqual(selected, [task for task in self.tasks if task.horizon == 3])
-        self.assertEqual(len(selected), 40)
+        self.assertEqual(len(selected), 2 * BASE_SCENARIOS)
 
     def test_limit_is_applied_after_horizon_and_type(self) -> None:
         selected = run_experiment.select_tasks(self.tasks, task_type="recovery", horizon=3, limit=1)
@@ -151,6 +152,7 @@ class TaskSelectionTests(unittest.TestCase):
         selected = next(task for task in self.tasks if task.task_type == task_type and task.horizon == horizon
                         and (task_id is None or task.task_id == task_id))
         actions = selected.recovery_actions if condition in {"error_restart", "recovery"} else selected.gold_actions
+        # selected resolves to the default error kind; run just that one so one record is written.
         scripted = ScriptedClient([{"type": "tool_call", "name": item["tool"], "arguments": item["arguments"]}
                                    for item in actions] + [{"type": "finish", "answer": "done"}])
         output = Path(self.scratch.name) / f"{condition}-h{horizon}.jsonl"
@@ -158,6 +160,8 @@ class TaskSelectionTests(unittest.TestCase):
                      "--condition", condition, "--horizon", str(horizon), "--limit", "1", "--output", str(output)]
         if task_id:
             arguments.extend(["--task-id", task_id])
+        if condition in {"error_restart", "recovery"}:
+            arguments.extend(["--error-kind", selected.error_kind])
         stdout = StringIO()
         with patch.object(sys, "argv", arguments), \
                 patch.object(run_experiment, "load_validated_tasks", return_value=(self.tasks, self.validation)), \
@@ -190,6 +194,27 @@ class TaskSelectionTests(unittest.TestCase):
                     expected_calls = (record["task"]["recovery_min_calls"] if condition == "error_restart"
                                       else horizon)
                     self.assertEqual(record["score"]["executed_tool_call_count"], expected_calls)
+
+    def test_error_condition_runs_every_error_kind_by_default(self) -> None:
+        fixture = next(task for task in self.tasks if task.task_type == "recovery" and task.horizon == 3)
+        responses = []
+        for kind in fixture.error_variants:
+            resolved = fixture.with_error_kind(kind)
+            responses += [{"type": "tool_call", "name": item["tool"], "arguments": item["arguments"]}
+                          for item in resolved.recovery_actions] + [{"type": "finish", "answer": "done"}]
+        output = Path(self.scratch.name) / "all-kinds.jsonl"
+        arguments = ["run_experiment.py", "--tasks", str(self.task_path), "--model-label", "scripted-not-qwen",
+                     "--condition", "error_restart", "--task-id", fixture.task_id, "--output", str(output)]
+        with patch.object(sys, "argv", arguments), \
+                patch.object(run_experiment, "load_validated_tasks", return_value=(self.tasks, self.validation)), \
+                patch.object(run_experiment, "LlamaCppClient", return_value=ScriptedClient(responses)), \
+                patch.object(run_experiment, "prepare_run", return_value={"preparation_protocol": "offline-mock"}), \
+                redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(run_experiment.main(), 0)
+        records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([record["score"]["error_kind"] for record in records], list(fixture.error_variants))
+        self.assertTrue(all(record["score"]["strict_success"] for record in records))
+        self.assertEqual([record["score"]["recovery_min_calls"] for record in records], [3, 2])
 
     def test_exact_nonfirst_task_id_is_used_by_real_offline_run(self) -> None:
         record, _ = self._run_scripted_selection(condition="free", horizon=3, task_id="place_005_h3")

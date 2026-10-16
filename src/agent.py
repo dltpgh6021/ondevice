@@ -11,13 +11,48 @@ from .client import InfrastructureError, ModelOutputError
 from .environment import MockEnvironment
 from .tasks import Task
 
-AGENT_POLICY_VERSION = "single-action-feedback-v1"
-METRICS_VERSION = "workflow-metrics-v5"
+AGENT_POLICY_VERSION = "single-action-feedback-v2"
+METRICS_VERSION = "workflow-metrics-v6"
+ERROR_CONDITIONS = {"recovery", "error_restart", "signaled_error_restart"}
+_TIMING_FIELDS = ("prompt_n", "prompt_ms", "predicted_n", "predicted_ms")
+
+
+def _model_text(output: Any) -> str:
+    """What the model actually produced, as plain text for the conversation."""
+    if isinstance(output, dict):
+        parts = []
+        content = output.get("content")
+        if isinstance(content, str) and content.strip():
+            parts.append(content.strip())
+        calls = output.get("tool_calls")
+        if calls:
+            parts.append(json.dumps(calls, ensure_ascii=False))
+        if parts:
+            return "\n".join(parts)
+        if output.get("type") == "tool_call":
+            return json.dumps({"name": output.get("name"), "arguments": output.get("arguments")}, ensure_ascii=False)
+        if "error" in output:
+            return f"[unusable response: {output['error']}]"
+    if isinstance(output, str):
+        return output
+    return json.dumps(output, ensure_ascii=False)
+
+
+def _add_timings(totals: dict[str, float], payload: Any) -> None:
+    """Accumulate llama.cpp per-response timings (prompt eval and generation)."""
+    timings = payload.get("timings") if isinstance(payload, dict) else None
+    if not isinstance(timings, dict):
+        return
+    totals["responses_with_timings"] += 1
+    for field in _TIMING_FIELDS:
+        value = timings.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            totals[field] += value
 
 
 def _output_feedback(messages: list[dict[str, Any]], output: Any, kind: str) -> None:
     """Fixed format feedback, never a task answer or a corrected tool argument."""
-    messages.append({"role": "assistant", "content": json.dumps(output, ensure_ascii=False)})
+    messages.append({"role": "assistant", "content": _model_text(output)})
     messages.append({"role": "user", "content": (
         f"Your last response could not be used ({kind}). Return exactly one tool call "
         "with a JSON object for its arguments, or a final answer if the task is complete. "
@@ -62,7 +97,7 @@ def run_agent(
     reference_actions = task.gold_actions
     if condition == "normal_restart":
         reference_actions = task.gold_actions[task.checkpoint_step :]
-    elif condition in {"recovery", "error_restart"}:
+    elif condition in ERROR_CONDITIONS:
         reference_actions = task.recovery_actions or []
 
     trace: dict[str, Any] = {
@@ -90,13 +125,15 @@ def run_agent(
         "dataset_version": task.dataset_version,
         "pair_id": task.base_id if task.task_type == "recovery" else None,
         "normal_remaining_calls": task.normal_remaining_calls,
-        "recovery_min_calls": task.recovery_min_calls,
+        "recovery_min_calls": task.recovery_min_calls if condition in ERROR_CONDITIONS else None,
     }
     trace.update(copy.deepcopy(getattr(environment, "preparation_metadata", {})))
 
     start_time = time.perf_counter()
     total_prompt_tokens = 0
     total_completion_tokens = 0
+    timing_totals: dict[str, float] = {field: 0.0 for field in _TIMING_FIELDS}
+    timing_totals["responses_with_timings"] = 0
     executed_calls = 0
     for step in range(max_calls):
         event: dict[str, Any] = {"step": step + 1}
@@ -107,9 +144,11 @@ def run_agent(
             usage = response.get("usage") or {}
             total_prompt_tokens += int(usage.get("prompt_tokens", 0) or 0)
             total_completion_tokens += int(usage.get("completion_tokens", 0) or 0)
+            _add_timings(timing_totals, response.get("raw_response"))
         except ModelOutputError as exc:
             total_prompt_tokens += int(exc.usage.get("prompt_tokens", 0) or 0)
             total_completion_tokens += int(exc.usage.get("completion_tokens", 0) or 0)
+            _add_timings(timing_totals, exc.payload)
             event.update({"error": "model_output_error", "model_error": exc.kind,
                           "error_detail": str(exc), "raw_response": exc.payload,
                           "usage": exc.usage, "finish_reason": exc.finish_reason,
@@ -154,7 +193,7 @@ def run_agent(
             trace["finished"] = True
             trace["termination_reason"] = "finished"
             trace["final_answer"] = answer
-            if task.schema_version in {"execution-v2", "recovery-v2"} and not environment.check_success(task.success_condition):
+            if task.schema_version in {"execution-v2", "recovery-v3"} and not environment.check_success(task.success_condition):
                 event["semantic_error"] = "premature_finish"
             trace["events"].append(event)
             break
@@ -197,7 +236,7 @@ def run_agent(
         )
         event["tool_result"] = result
         event["state_hash_after"] = environment.state_hash()
-        if (task.schema_version == "recovery-v2" and condition in {"error_restart", "recovery"}
+        if (task.schema_version == "recovery-v3" and condition in ERROR_CONDITIONS
                 and hasattr(environment, "injected_error_present")):
             event["injected_error_present_after"] = environment.injected_error_present()
         try:
@@ -215,6 +254,8 @@ def run_agent(
     trace["elapsed_ms"] = round((time.perf_counter() - start_time) * 1000, 3)
     trace["prompt_tokens"] = total_prompt_tokens
     trace["completion_tokens"] = total_completion_tokens
+    trace["server_timings"] = {key: (round(value, 3) if isinstance(value, float) else value)
+                               for key, value in timing_totals.items()}
     trace["final_state"] = environment.snapshot()
     trace["final_state_hash"] = environment.state_hash()
     trace["messages"] = messages

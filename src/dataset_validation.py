@@ -14,14 +14,15 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from .dataset_spec import (DATASET_VERSION, ERROR_KINDS, EXECUTION_HORIZONS, EXECUTION_TASKS, RECOVERY_CONDITIONS,
+                           RECOVERY_HORIZONS, RECOVERY_TASKS, BASE_SCENARIOS, TOTAL_TASKS)
 from .environment import environment_for_task
 from .execution_environment import WORKFLOWS, resource_id
 from .execution_validation import validate_execution_tasks
 from .recovery_validation import validate_recovery_tasks
 from .tasks import Task, canonical_json, stable_hash, validate_task_set
 
-DATASET_VERSION = "workflow-en-v3"
-VALIDATOR_VERSION = "dataset-validator-v3"
+VALIDATOR_VERSION = "dataset-validator-v4"
 
 
 class DatasetValidationError(ValueError):
@@ -87,20 +88,20 @@ def _schema(rows: Any) -> None:
         path = f"tasks[{index}]"
         _type(row, dict, path)
         is_recovery = row.get("task_type") == "recovery"
-        recovery = {"error_injection", "recovery_actions", "normal_remaining_calls", "recovery_min_calls"} if is_recovery else set()
+        recovery = {"error_variants", "normal_remaining_calls"} if is_recovery else set()
         _fields(row, common | recovery, {"error_description", "recovery_query"}, path)
         for key in ("id", "base_id", "domain", "task_type", "schema_version", "language", "dataset_version", "query"):
             _text(row[key], path + "." + key)
         _require(row["task_type"] in {"execution", "recovery"}, path + ": unsupported task_type")
-        _require(row["schema_version"] == ("recovery-v2" if is_recovery else "execution-v2"), path + ": unsupported schema_version")
+        _require(row["schema_version"] == ("recovery-v3" if is_recovery else "execution-v2"), path + ": unsupported schema_version")
         _require(row["domain"] in WORKFLOWS, path + ": unsupported domain")
         _require(row["language"] == "en" and row["dataset_version"] == DATASET_VERSION, path + ": expected English dataset " + DATASET_VERSION)
         _type(row["horizon"], int, path + ".horizon")
         _type(row["checkpoint_step"], int, path + ".checkpoint_step")
-        _require(row["horizon"] in ({1, 3} if is_recovery else {1, 3, 5}),
+        _require(row["horizon"] in (set(RECOVERY_HORIZONS) if is_recovery else set(EXECUTION_HORIZONS)),
                  path + (": recovery horizon must be 1 or 3" if is_recovery else ": horizon must be 1, 3 or 5"))
         _require(0 <= row["checkpoint_step"] < row["horizon"], path + ": checkpoint must leave unfinished work")
-        for key in ("initial_actions", "gold_actions") + (("recovery_actions",) if is_recovery else ()):
+        for key in ("initial_actions", "gold_actions"):
             _type(row[key], list, path + "." + key)
             for number, action in enumerate(row[key]):
                 _action(action, f"{path}.{key}[{number}]")
@@ -111,14 +112,26 @@ def _schema(rows: Any) -> None:
         _fields(row["success_condition"], {"completed_request_equals"}, set(), path + ".success_condition")
         _completion(row["success_condition"]["completed_request_equals"], path + ".success_condition.completed_request_equals")
         if is_recovery:
-            for key in ("normal_remaining_calls", "recovery_min_calls"):
-                _type(row[key], int, path + "." + key)
-            _fields(row["error_injection"], {"type", "actions"}, set(), path + ".error_injection")
-            _require(row["error_injection"]["type"] == "wrong_saved_result", path + ": unsupported error injection")
-            _type(row["error_injection"]["actions"], list, path + ".error_injection.actions")
-            _require(bool(row["error_injection"]["actions"]), path + ": error injection needs actions")
-            for number, action in enumerate(row["error_injection"]["actions"]):
-                _action(action, f"{path}.error_injection.actions[{number}]")
+            _type(row["normal_remaining_calls"], int, path + ".normal_remaining_calls")
+            variants = row["error_variants"]
+            _type(variants, dict, path + ".error_variants")
+            _require(tuple(variants) == ERROR_KINDS, path + f": error_variants must be exactly {list(ERROR_KINDS)} in order")
+            for kind, variant in variants.items():
+                where = f"{path}.error_variants.{kind}"
+                _fields(variant, {"error_injection", "recovery_actions", "recovery_min_calls", "error_description"}, set(), where)
+                _type(variant["recovery_min_calls"], int, where + ".recovery_min_calls")
+                _text(variant["error_description"], where + ".error_description")
+                _type(variant["recovery_actions"], list, where + ".recovery_actions")
+                for number, action in enumerate(variant["recovery_actions"]):
+                    _action(action, f"{where}.recovery_actions[{number}]")
+                injection = variant["error_injection"]
+                _fields(injection, {"type", "error_kind", "actions"}, set(), where + ".error_injection")
+                _require(injection["type"] == "wrong_saved_result" and injection["error_kind"] == kind,
+                         where + ": unsupported or mislabeled error injection")
+                _type(injection["actions"], list, where + ".error_injection.actions")
+                _require(bool(injection["actions"]), where + ": error injection needs actions")
+                for number, action in enumerate(injection["actions"]):
+                    _action(action, f"{where}.error_injection.actions[{number}]")
         spec = row["execution_spec"]
         _fields(spec, {"domain", "request_id", "request", "candidates"}, set(), path + ".execution_spec")
         _require(spec["domain"] == row["domain"], path + ": fixture/task domain mismatch")
@@ -209,7 +222,7 @@ def _model_payloads(tasks: list[Task]) -> dict[str, int]:
     strings = 0
     continuations = 0
     for task in tasks:
-        conditions = ("free",) if task.task_type == "execution" else ("normal_restart", "error_restart")
+        conditions = ("free",) if task.task_type == "execution" else RECOVERY_CONDITIONS
         if task.task_type == "execution":
             # This optional diagnostic intentionally replays extra normal work.
             diagnostic = environment_for_task(task)
@@ -219,14 +232,17 @@ def _model_payloads(tasks: list[Task]) -> dict[str, int]:
                 _require(diagnostic.execute(action["tool"], action["arguments"])["ok"], f"{task.task_id}: invalid diagnostic action")
             _require(diagnostic.check_success(task.success_condition), f"{task.task_id}: diagnostic cannot complete")
         for condition in conditions:
-            environment = environment_for_task(task)
-            messages, _ = environment.prepare_condition(task, condition)
-            strings += _ascii(environment.tool_definitions(), task.task_id + ".tools")
-            strings += _ascii(messages, task.task_id + ".messages")
-            actions = task.recovery_actions if condition == "error_restart" else task.gold_actions
-            for action in actions:
-                strings += _ascii(environment.execute(action["tool"], action["arguments"]), task.task_id + ".tool_result")
-            continuations += 1
+            kinds = ERROR_KINDS if condition not in {"free", "normal_restart"} else (None,)
+            for kind in kinds:
+                resolved = task.with_error_kind(kind) if kind else task
+                environment = environment_for_task(resolved)
+                messages, _ = environment.prepare_condition(resolved, condition)
+                strings += _ascii(environment.tool_definitions(), task.task_id + ".tools")
+                strings += _ascii(messages, task.task_id + ".messages")
+                actions = resolved.gold_actions if kind is None else resolved.recovery_actions
+                for action in actions:
+                    strings += _ascii(environment.execute(action["tool"], action["arguments"]), task.task_id + ".tool_result")
+                continuations += 1
     return {"continuations_checked": continuations, "ascii_string_fields_checked": strings}
 
 
@@ -261,9 +277,10 @@ def validate_dataset_records(rows: Any) -> tuple[list[Task], dict[str, Any]]:
     try:
         _schema(rows)
         tasks = [Task.from_mapping(row) for row in rows]
-        collection = validate_task_set(tasks, expected_total=100, expected_counts={"execution": 60, "recovery": 40},
-                                       required_horizons={1, 3, 5}, expected_per_type_horizon=20, require_pairs=True,
-                                       recovery_horizons={1, 3})
+        collection = validate_task_set(tasks, expected_total=TOTAL_TASKS,
+                                       expected_counts={"execution": EXECUTION_TASKS, "recovery": RECOVERY_TASKS},
+                                       required_horizons=set(EXECUTION_HORIZONS), expected_per_type_horizon=BASE_SCENARIOS,
+                                       require_pairs=True, recovery_horizons=set(RECOVERY_HORIZONS))
         stage = "language_and_information"
         _ascii(rows, "dataset")
         _information(tasks)

@@ -178,17 +178,27 @@ def run_batch(
     server_pid: int | None = None,
     server_ram_sample_interval_ms: int = 100,
     gpu_index: int | None = None,
+    error_kinds: tuple[str, ...] | list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    """Run every selected task once; error conditions run once per error kind."""
+    error_conditions = {"recovery", "error_restart", "signaled_error_restart"}
+    runs: list[Task] = []
+    for task in tasks:
+        if condition in error_conditions and task.error_variants:
+            kinds = list(error_kinds) if error_kinds else list(task.error_variants)
+            runs.extend(task.with_error_kind(kind) for kind in kinds)
+        else:
+            runs.append(task)
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, Any]] = []
     metadata = {**metadata, "metrics_version": METRICS_VERSION,
                 "agent_policy_version": AGENT_POLICY_VERSION}
     with output.open("x", encoding="utf-8") as handle:
-        for task in tasks:
+        for task in runs:
             environment = environment_for_task(task)
             required_calls = task.horizon
-            if task.schema_version == "recovery-v2":
+            if task.schema_version == "recovery-v3":
                 required_calls = task.normal_remaining_calls
             elif condition != "free":
                 required_calls = max(0, task.horizon - task.checkpoint_step)
@@ -234,11 +244,12 @@ def run_batch(
                     "query": task.query,
                     "recovery_query": task.recovery_query,
                     "error_description": task.error_description,
-                    "error_injection": task.error_injection,
+                    "error_injection": task.error_injection if condition in error_conditions else None,
+                    "error_kind": task.error_kind if condition in error_conditions else None,
                     "success_condition": task.success_condition,
                     "normal_remaining_calls": task.normal_remaining_calls,
-                    "recovery_min_calls": task.recovery_min_calls,
-                    "recovery_actions": task.recovery_actions,
+                    "recovery_min_calls": task.recovery_min_calls if condition in error_conditions else None,
+                    "recovery_actions": task.recovery_actions if condition in error_conditions else None,
                 },
                 "trace": trace,
                 "score": score,

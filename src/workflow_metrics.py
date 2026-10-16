@@ -10,7 +10,8 @@ from typing import Any
 from .execution_environment import completion_condition_matches, workflow_stage
 from .tasks import Task
 
-METRICS_VERSION = "workflow-metrics-v5"
+METRICS_VERSION = "workflow-metrics-v6"
+ERROR_CONDITIONS = {"error_restart", "recovery", "signaled_error_restart"}
 LEGACY_METRICS_VERSION = "workflow-metrics-v2"
 LEGACY_AGENT_POLICY = "legacy-unversioned"
 MODEL_ERRORS = {"model_output_error", "invalid_action", "invalid_arguments"}
@@ -75,7 +76,7 @@ def _stable_false_turn(events: list[dict[str, Any]], name: str, final_absent: bo
 
 def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
     condition = trace["condition"]
-    recovery = condition in {"error_restart", "recovery"}
+    recovery = condition in ERROR_CONDITIONS
     events = trace.get("events", [])
     response_events = [event for event in events
                        if event.get("response_received", not _fatal_event(event, trace))]
@@ -101,7 +102,7 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
                                      and not infrastructure_count and not internal_count)
     valid = not (infrastructure_count or internal_count or unclassified_runtime_count)
     success = valid and state_match
-    paired = task.schema_version == "recovery-v2"
+    paired = task.schema_version == "recovery-v3"
     normal_calls = task.normal_remaining_calls if paired else task.horizon - (
         task.checkpoint_step if condition == "normal_restart" else 0)
     oracle_calls = task.recovery_min_calls if recovery else normal_calls
@@ -132,6 +133,15 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         isinstance(event.get("action"), dict) and event["action"].get("type") == "tool_call"))
         for event in events)
     response_count, executed_count = len(response_events), len(tool_events)
+    timings = trace.get("server_timings") or {}
+
+    def per_second(tokens: str, milliseconds: str) -> float | None:
+        count, elapsed = timings.get(tokens), timings.get(milliseconds)
+        if not isinstance(count, (int, float)) or not isinstance(elapsed, (int, float)) or elapsed <= 0:
+            return None
+        return round(count / (elapsed / 1000), 3)
+
+    elapsed_ms = trace.get("elapsed_ms", 0.0)
     return {
         "task_id": task.task_id, "base_id": task.base_id, "task_type": task.task_type,
         "task_schema_version": task.schema_version, "protocol_version": trace.get("protocol_version", task.schema_version),
@@ -141,7 +151,8 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "checkpoint_state_hash": trace.get("checkpoint_state_hash"),
         "resume_workflow_step": trace.get("resume_workflow_step"),
         "horizon": task.horizon, "condition": condition,
-        "normal_remaining_calls": normal_calls, "recovery_min_calls": task.recovery_min_calls,
+        "error_kind": trace.get("error_kind") if recovery else None,
+        "normal_remaining_calls": normal_calls, "recovery_min_calls": task.recovery_min_calls if recovery else None,
         "strict_success": success, "final_state_match": state_match,
         "valid_for_behavior_metrics": valid,
         "infrastructure_error_count": infrastructure_count, "internal_error_count": internal_count,
@@ -196,7 +207,14 @@ def score_workflow_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
         "recovery_first_error_turn": first_error if recovery else None,
         "recovery_first_error_tool_call_index": first_tool_index if recovery else None,
         "recovery_completion_step": min(completed, default=None) if recovery else None,
-        "elapsed_ms": trace.get("elapsed_ms", 0.0),
+        "elapsed_ms": elapsed_ms,
+        # Latency normalized by work actually done, so a run that gives up early
+        # does not look "faster". Throughput comes from llama.cpp timings.
+        "ms_per_response_turn": round(elapsed_ms / response_count, 3) if response_count and elapsed_ms else None,
+        "prompt_eval_tokens": timings.get("prompt_n"), "prompt_eval_ms": timings.get("prompt_ms"),
+        "generated_tokens": timings.get("predicted_n"), "generation_ms": timings.get("predicted_ms"),
+        "prompt_tokens_per_second": per_second("prompt_n", "prompt_ms"),
+        "generation_tokens_per_second": per_second("predicted_n", "predicted_ms"),
         "prompt_tokens": trace.get("prompt_tokens", 0), "completion_tokens": trace.get("completion_tokens", 0),
         "max_ram_mb": trace.get("max_ram_mb"), "peak_server_ram_mb": trace.get("peak_server_ram_mb"),
         "peak_gpu_memory_mb": trace.get("peak_gpu_memory_mb"),

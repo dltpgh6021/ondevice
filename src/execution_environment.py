@@ -35,8 +35,24 @@ WORKFLOWS = {
 }
 
 
-EXECUTION_PROTOCOL = "execution-v3-provided-context"
-RECOVERY_PROTOCOL = "wrong-saved-result-v4"
+EXECUTION_PROTOCOL = "execution-v4-provided-context"
+RECOVERY_PROTOCOL = "wrong-saved-result-v5"
+ERROR_CONDITIONS = frozenset({"recovery", "error_restart", "signaled_error_restart"})
+CONDITIONS = frozenset({"free", "normal_restart"}) | ERROR_CONDITIONS
+# The signaled-error control: one fixed, generic audit notice after the same
+# wrong history. It names no candidate, option, constraint or answer, so the
+# only difference from the silent error_restart branch is that an error exists.
+SIGNALED_ERROR_MESSAGE = (
+    "Automated audit notice: the result currently saved for this request does not "
+    "satisfy the request. Continue working on the original request."
+)
+AGENT_INSTRUCTIONS = (
+    " Use English for all responses. Return at most one tool call per response; multiple calls in one "
+    "response are rejected without executing any of them. Invalid output receives only generic format "
+    "feedback and consumes a response turn. Resource IDs must come from the user context or tool results. "
+    "Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts "
+    "are not final until confirmed."
+)
 PROVIDED_CONTEXT_HEADER = (
     "Information already available from earlier lookups for this request "
     "(tool name and its result, JSON):"
@@ -215,13 +231,13 @@ class ExecutionEnvironment(MockEnvironment):
         past tool calls; the error branch additionally continues with a wrong
         completion that saves a request-violating result for the same request.
         """
-        if condition not in {"free", "normal_restart", "recovery", "error_restart"}:
+        if condition not in CONDITIONS:
             raise ValueError(f"unsupported condition: {condition}")
-        paired_recovery = task.schema_version == "recovery-v2"
+        paired_recovery = task.schema_version == "recovery-v3"
         if paired_recovery and condition == "free":
-            raise ValueError("recovery-v2 must use normal_restart or error_restart")
-        if not paired_recovery and condition in {"recovery", "error_restart"}:
-            raise ValueError("error_restart requires a recovery-v2 fixture")
+            raise ValueError("recovery-v3 must use normal_restart or error_restart")
+        if not paired_recovery and condition in ERROR_CONDITIONS:
+            raise ValueError(f"{condition} requires a recovery-v3 fixture")
         seeds = [] if paired_recovery else list(task.initial_actions or [])
         history = list(task.initial_actions or []) if paired_recovery else []
         if condition == "normal_restart" and not paired_recovery:
@@ -236,7 +252,7 @@ class ExecutionEnvironment(MockEnvironment):
         if provided:
             query += "\n\n" + PROVIDED_CONTEXT_HEADER + "\n" + json.dumps(provided, ensure_ascii=False)
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT + " Use English for all responses. Return at most one tool call per response; multiple calls in one response are rejected without executing any of them. Invalid output receives only generic format feedback and consumes a response turn. Resource IDs must come from the user context or tool results. Apply the structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed."},
+            {"role": "system", "content": SYSTEM_PROMPT + AGENT_INSTRUCTIONS},
             {"role": "user", "content": query},
         ]
         for index, action in enumerate(history):
@@ -250,10 +266,12 @@ class ExecutionEnvironment(MockEnvironment):
             "resume_workflow_step": len(WORKFLOWS[self.spec["domain"]]["names"]) - len(remaining),
             "context_delivery": "user_message" if provided else ("assistant_history" if history else "none"),
             "injected_actions": [],
+            "error_signal": None,
+            "error_kind": None,
             "fixture_sha256": stable_hash(self.spec),
             "protocol_version": RECOVERY_PROTOCOL if paired_recovery else EXECUTION_PROTOCOL,
         }
-        if condition in {"recovery", "error_restart"}:
+        if condition in ERROR_CONDITIONS:
             injection = task.error_injection or {}
             if injection.get("type") != "wrong_saved_result":
                 raise ValueError(f"{task.task_id}: unsupported recovery injection")
@@ -265,6 +283,10 @@ class ExecutionEnvironment(MockEnvironment):
                 self._append_call(messages, f"injected_{index + 1}", action, result)
                 injected.append({"action": copy.deepcopy(action), "result": copy.deepcopy(result)})
             self.preparation_metadata["injected_actions"] = injected
+            self.preparation_metadata["error_kind"] = injection.get("error_kind")
+            if condition == "signaled_error_restart":
+                messages.append({"role": "user", "content": SIGNALED_ERROR_MESSAGE})
+                self.preparation_metadata["error_signal"] = SIGNALED_ERROR_MESSAGE
         return messages, remaining[0]["tool"] if remaining else None
 
     def injected_wrong_results(self) -> list[dict[str, Any]]:

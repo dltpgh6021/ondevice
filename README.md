@@ -1,795 +1,1041 @@
 # Quantized Agent Stability
 
-양자화가 장기 Agent의 수행 안정성에 미치는 영향을 비교하는 실험 저장소입니다.
+**양자화(FP16 → Q8 → Q4)가 소형 LLM Agent의 다단계 도구 사용에서 오류를 얼마나 더 만들고, 이미 생긴 오류를 얼마나 덜 고치는지**를 같은 상태에서 재개하는 통제 실험으로 측정하는 저장소입니다.
 
-**현재 단계:** `workflow-en-v3`에서 회복 fixture 설계를 보완했습니다(아래 "workflow-en-v3 변경 사항"). 그 이전 `workflow-en-v2`에서 실험 조건을 재설계했습니다. 오류 분기는 자유 수행에서 모델이 실제로 낼 수 있는 오류(조건을 위반한 후보를 같은 요청으로 확정)를 주입하고, 자유 수행은 앞 단계 결과를 모델 자신의 과거 호출이 아니라 사용자 메시지로 받습니다. 지표 v4(다음 행동 정확도·작업 단계별 최초 오류·자기 회복률), 정밀도 간 짝지은 비교(McNemar·bootstrap), GPU 메모리 샘플링을 추가했습니다. 아래 검증은 정답 재생과 코드 검증이며 실제 Qwen 성능 검증은 아닙니다. resume/반복 실행 관리는 아직 별도 보완 대상입니다.
-
-현재 모델 입력은 **영어**, 데이터 버전은 `workflow-en-v3`입니다. 질문·요청 조건 설명·후보 이름·일정 제목·도구 정의·오류 관측을 영어로 통일했습니다. 실제 실험 명령은 전체 데이터셋 자동 검증을 먼저 통과해야 시작합니다. 팀원용 README는 한국어이며, 생성되는 task 카탈로그는 영어입니다.
-
-이 변경이 Qwen의 영어 성능 우위를 측정한 결과는 아닙니다. 이번 비교에서 언어 조건을 고정하기 위한 선택입니다. 기존 한국어 파일럿 결과, `workflow-en-v1`, `workflow-en-v2`, 새 `workflow-en-v3` 결과는 서로 합치지 않습니다. 모델 파일과 양자화 결과는 그대로 사용할 수 있지만, 실험 결과는 새로 수집해야 합니다.
-
-이 프로젝트는 FP16·Q8·Q4 모델을 같은 Agent framework와 동일한 mock tool 환경에서 실행합니다. 최종 성공률만 비교하지 않고, 다음 두 현상을 분리해 측정합니다.
-
-1. 모델이 오류를 얼마나 자주 발생시키는가
-2. 같은 오류가 주어졌을 때 얼마나 잘 회복하는가
-
-## workflow-en-v3 변경 사항
-
-v2 데이터셋 검토에서 회복 실험 수치를 왜곡하는 문제가 확인되어 다음을 고쳤습니다. 실행 과제의 질문·도구·5단계 흐름과 채점 방식은 그대로입니다.
-
-| # | v2의 문제 | v3 수정 | 재발 방지 검증 |
-|---|---|---|---|
-| 1 | 회복 h5 `error_restart` 입력이 회복 h3 `error_restart`와 호출 ID 이름만 다르고 같음(20/20) | 회복 h5 fixture 삭제. h5는 `free`로만 분석 | 회복 horizon은 1·3만 허용, 모든 조건의 모델 입력이 서로 다른지 검사 |
-| 2 | 회복 h5 `normal_restart` 입력이 `free` h5와 같음(20/20) | 위와 같음 | `normal_restart` 입력이 어떤 `free` 입력과도 같지 않은지 검사 |
-| 3 | 회복 h1 `normal_restart`에는 draft가 1개뿐이라(free h1은 3개) 고를 것이 없음 | 회복 checkpoint 기록 = 대응 `free` 과제의 제공 정보 그대로(h1은 draft 3개) | `free`와 `normal_restart`의 checkpoint 상태가 같은지 검사 |
-| 4 | 최소 복구 호출이 h1은 1, h3·h5는 3으로 horizon별 복구 비용이 다름. h1 오류 기록은 정답 draft를 만든 뒤 위반 후보로 갈아타는 부자연스러운 흐름 | h1 오류 = draft 3개를 준비한 뒤 위반 draft를 확정. 최소 복구 호출 = 정상 최소 호출(h1 1, h3 3) | `recovery_min_calls == normal_remaining_calls == horizon` 검사 |
-| 5 | 위반 후보가 순위 기준으로도 꼴찌인 시나리오 3개(`shopping_005`, `place_002`, `travel_005`)는 오류 발견이 너무 쉬움 | 세 시나리오의 위반 후보를 "조건을 무시하면 1등" 후보로 교체. 장소 분야의 위반 조건 다양성을 유지하려고 도보 시간 위반을 `place_001`로 옮김 | 모든 시나리오에서 위반 후보가 조건 무시 시 단독 1등인지 검사 |
-| 7 | 존재하지 않는 ID를 쓴 복사 오류와 존재하지만 틀린 후보를 고른 선택 오류가 섞임 | `identifier_error_count`·`identifier_error_episode` 지표 추가(`metrics_version=workflow-metrics-v5`) | 회귀 테스트 |
-
-- 바뀐 실행 과제는 위 4개 시나리오(`shopping_005`, `place_001`, `place_002`, `travel_005`)의 후보 값뿐이며, 요청 문구·제약 조건·정답 후보의 값은 같습니다.
-- 회복 프로토콜은 `wrong-saved-result-v4`입니다. 데이터·프로토콜·지표 버전이 모두 바뀌었으므로 v2 결과와 합치지 않고 새로 수집합니다.
-- h3과 h5의 판단 지점(후보 선택, 옵션 선택)은 같습니다. h5에 추가된 두 호출은 ID 전달뿐이므로 h3·h5 차이는 "추론 단계 증가"가 아니라 "대화 길이·ID 전달 증가"의 효과로 보고합니다.
-- 기본 시나리오가 20개라 정밀도 간 짝지은 비교의 검정력이 낮습니다. 시나리오 확대는 이번 변경에 포함하지 않았습니다.
-
-## 실험 조건과 task 유형
-
-| 조건 | 과제 | 시작 상태 | 측정하려는 것 |
-|---|---|---|---|
-| `free` | execution 60개 (h1·h3·h5) | 앞 단계 결과를 **사용자 메시지**로 제공 (h5는 없음) | 단계 수별 성공률, 자연 발생 오류, 최초 오류 위치, 스스로 고친 비율 |
-| `normal_restart` | recovery 40개 (h1·h3) | 대응 `free` 과제와 같은 정보를 **모델 자신의 과거 도구 호출**로 제공 | 같은 정상 상태에서 다음 행동 정확도 |
-| `error_restart` | 같은 recovery 40개 | 위 기록 + 조건을 위반한 후보를 **같은 요청으로 확정한** 기록 | 같은 실수를 얼마나 잘 고치는지 |
-
-`recovery`는 `error_restart`의 호환 별칭입니다.
-
-`horizon`은 시작 상태에서 완료까지 **남아 있는 필수 도구 호출 수**입니다. 5단계 작업 흐름 중 h1은 앞 4단계, h3은 앞 2단계까지의 결과를 갖고 시작하고, h5는 요청 조회부터 모델이 수행합니다. 미리 제공한 결과·호출과 종료 응답은 horizon에 포함하지 않습니다. 실행 중 실제 호출 수·추가 호출 수는 별도로 기록합니다.
-
-`free`와 `normal_restart`는 같은 정보를 받지만 전달 방식이 다릅니다. `free`는 사용자가 알려준 정보로, `normal_restart`는 모델이 스스로 진행해 온 기록으로 받습니다. 데이터 검증이 두 조건의 checkpoint 상태가 같고 모델 입력은 다른지 확인합니다. h5는 checkpoint 이전 기록이 없어 `normal_restart`가 `free`와 같아지므로 회복 fixture를 두지 않습니다. 오류 누적과 처음부터의 최초 오류 위치는 h5 `free`로 분석합니다.
-
-## 현재 구현 범위
-
-현재 파일에는 정상 수행 60개와 대응 회복 fixture 40개(h1·h3), 총 100개 task가 있습니다. 60개는 20개 기본 시나리오의 시작 정보 3조건이며, 서로 독립인 60개 질문이 아닙니다. [정상 시나리오](tasks/EXECUTION_TASKS.md)와 [회복 설계·목록](tasks/RECOVERY_TASKS.md)에서 요청과 오류 조건을 확인할 수 있습니다.
-
-- 결정론적 mock tool 환경
-- 정상 상태와 오류 상태의 checkpoint 생성
-- 오류 상태 주입
-- 원래 질문을 유지하며 실제 오류 호출·관측이 보이는 checkpoint 기록
-- FakeClient를 이용한 모델 없는 smoke test
-- llama.cpp 서버와 통신하는 HTTP client
-- 성공률·오류 위치·회복률·추가 호출 수 집계
-- 실행 환경과 task/model hash 기록
-
-execution은 같은 기본 시나리오의 질문·후보·선택 규칙·최종 목표를 h1·h3·h5에서 동일하게 유지합니다. 회복 fixture도 이 질문·목표를 공유하며, 정상/오류 분기는 같은 checkpoint에서 갈라집니다.
-
-현재 `tasks/tasks.json`에는 다음 100개가 포함되어 있습니다.
-
-| Task 유형 | Horizon | 쇼핑 | 일정 | 이동 | 장소 | 합계 |
-|---:|---:|---:|---:|---:|---:|---:|
-| 정상 수행 | 1 | 5 | 5 | 5 | 5 | 20 |
-| 정상 수행 | 3 | 5 | 5 | 5 | 5 | 20 |
-| 정상 수행 | 5 | 5 | 5 | 5 | 5 | 20 |
-| 회복 수행 | 1 | 5 | 5 | 5 | 5 | 20 |
-| 회복 수행 | 3 | 5 | 5 | 5 | 5 | 20 |
-| 합계 | - | 25 | 25 | 25 | 25 | 100 |
-
-`task_type`이 `execution`이면 정상 수행 task이고, `recovery`이면 정상/오류 두 분기에 공통으로 사용할 회복 fixture입니다. `task_type`과 실제 실행 `condition`을 구분합니다. 모델당 execution 60회 + 회복 정상 분기 40회 + 오류 분기 40회 = 140회이며, FP16·Q8·Q4를 모두 실행하면 반복 전 총 420회입니다.
-
-## execution-v2의 실제 단계 의존성
-
-| 분야 | 5단계 흐름 |
+| 항목 | 현재 값 |
 |---|---|
-| 쇼핑 | 구매 요청 확인 → 상품 후보 조회 → 상품 상세 → 구매 견적 준비 → 구매 항목 확정 |
-| 일정 | 일정 요청 확인 → 빈 시간대 조회 → 시간대 상세 → 일정 예약 준비 → 일정 확정 |
-| 이동 | 이동 요청 확인 → 이동편 후보 조회 → 운임 상세 → 여행 일정 준비 → 여행 일정 확정 |
-| 장소 | 방문 요청 확인 → 장소 후보 조회 → 방문 상세 → 방문 계획 준비 → 방문 계획 확정 |
+| 모델 | Qwen3-1.7B (원본 F16 GGUF → 같은 원본에서 직접 Q8_0·Q4_K_M 생성) |
+| 추론 서버 | llama.cpp `llama-server` (OpenAI 호환 `/v1/chat/completions`) |
+| 데이터 버전 | `workflow-en-v4` (모델 입력은 영어) |
+| 과제 수 | 기본 시나리오 60개 → execution 180 + recovery fixture 120 = **300 task** |
+| 모델당 실행 수 | **780회** (FP16·Q8·Q4 전체 2,340회) |
+| 프로토콜 버전 | execution `execution-v4-provided-context`, recovery `wrong-saved-result-v5` (schema `recovery-v3`) |
+| 지표 / Agent 정책 | `workflow-metrics-v6` / `single-action-feedback-v2` |
+| 외부 의존성 | 핵심 기능은 Python 표준 라이브러리만 사용. 선택: `psutil`(RAM), `matplotlib`(그래프) |
 
-앞 호출이 생성한 검색 컨텍스트·후보·상세·견적/예약 리소스가 다음 호출의 입력입니다. 존재하지 않는 리소스의 식별자를 알아맞혀 넣어도 실행되지 않습니다. 단순히 정답 순서나 조회 횟수를 검사하는 방식은 사용하지 않습니다. 반복 조회나 다른 후보 확인도 허용되며, 최종 저장값이 요청 조건을 만족하는지 채점합니다.
+> 이 README의 모든 검증 결과는 **정답 재생과 코드 검증**입니다. 실제 Qwen의 성능이나 논문 결론을 검증했다는 뜻이 아닙니다.
 
-예를 들어 `shopping_001_h5`는 구매 요청을 조회해야 예산 100·평점 4.0 이상·평점 우선 선택·일반 배송이라는 조건을 알 수 있습니다. 후보 결과에서 조건에 맞는 상품을 선택하고, 상세 결과의 배송 옵션을 이용해 견적을 만든 뒤 해당 견적을 확정합니다. 질문에는 정답 상품 ID가 없습니다. h3에는 요청·후보 결과를 제공하므로 3회가 남습니다. h1에는 요청·후보·상세 결과와 **draft 3개**(정답 1개, 같은 상품의 다른 배송 옵션 1개, 조건을 위반한 상품 1개)를 제공하므로, 모델이 맞는 draft를 골라 확정하는 1회가 남습니다. draft 순서는 시나리오마다 바뀝니다.
+---
 
-최종 판정은 저장된 구매/일정/이동/방문 결과를 읽습니다. `last_result`나 마지막 도구 이름은 사용하지 않으며, 완료 후 `inspect_state`를 호출해도 성공이 유지됩니다. 일정의 날짜·시간 조건·인원·진행 방식 등 필요한 정보는 요청/후보/상세 결과에 모두 포함됩니다.
+## 목차
 
-각 시나리오는 적격 후보 2개와 조건을 위반하는 후보 1개, 후보별 옵션 2개를 가집니다. 위반 후보는 모든 시나리오에서 조건을 무시하면 순위 1등인 후보라서, 이를 고르는 것은 "조건 확인을 빠뜨린" 그럴듯한 실수입니다. 일부 시나리오는 1순위 점수가 같아 명시된 2순위 기준을 적용해야 합니다. 금액은 가상 단위이고 `start_hour`·`depart_hour`는 해당 날짜의 24시간제 정수 시각입니다.
+1. [연구 질문과 가설](#1-연구-질문과-가설)
+2. [실험 설계 한눈에 보기](#2-실험-설계-한눈에-보기)
+3. [과제 세계: 4개 분야 × 5단계 작업 흐름](#3-과제-세계-4개-분야--5단계-작업-흐름)
+4. [Horizon: 남은 단계 수](#4-horizon-남은-단계-수)
+5. [실험 조건 4가지](#5-실험-조건-4가지)
+6. [오류 종류 2가지와 복구 비용](#6-오류-종류-2가지와-복구-비용)
+7. [모델이 실제로 받는 입력](#7-모델이-실제로-받는-입력)
+8. [채점 규칙](#8-채점-규칙)
+9. [지표 사전](#9-지표-사전)
+10. [통계 분석](#10-통계-분석)
+11. [저장소 구조](#11-저장소-구조)
+12. [환경 준비 (처음 한 번)](#12-환경-준비-처음-한-번)
+13. [llama.cpp 준비](#13-llamacpp-준비)
+14. [모델 준비와 양자화](#14-모델-준비와-양자화)
+15. [실행 전 점검](#15-실행-전-점검)
+16. [실험 실행 절차 (runbook)](#16-실험-실행-절차-runbook)
+17. [결과 파일 구조](#17-결과-파일-구조)
+18. [분석 실행과 산출물](#18-분석-실행과-산출물)
+19. [결과 해석과 보고서 작성 가이드](#19-결과-해석과-보고서-작성-가이드)
+20. [팀 협업과 결과 공유](#20-팀-협업과-결과-공유)
+21. [데이터셋 수정 방법](#21-데이터셋-수정-방법)
+22. [문제 해결 FAQ](#22-문제-해결-faq)
+23. [변경 이력](#23-변경-이력)
+24. [알려진 한계](#24-알려진-한계)
 
-v2 task의 `natural_error`·`first_error_step`는 정답 경로의 순서를 비교하지 않습니다. 도구/인자 오류, 요청을 위반한 결과 확정, 올바른 결과 삭제, 미완료 상태의 종료와 잘못된 모델 출력을 셉니다. 유효한 추가 조회·다른 후보 탐색·삭제 순서 차이는 오류가 아닙니다. 준비만 한 잘못된 draft 등 모든 계획 오류를 포착하는 지표는 아닙니다. 지표 v5도 v3·v4와 같이 잘못된 모델 JSON·다중 도구 출력·토큰 상한 잘림은 행동 평가에 포함하고, HTTP·연결·서버 응답 형식 장애 및 예상하지 못한 코드 예외는 별도 표시하여 분모에서 제외합니다.
+---
 
-이 설계는 **동일 작업 흐름에서 남은 의존 단계 수**의 효과를 비교합니다. 시작 정보량도 달라지므로 일반 과제의 길이만 바꾼 결과라고 해석하지 않습니다. "1-step 과제 대 5-step 과제"가 아니라 "올바른 정보가 주어진 지점에서 남은 단계 수"로 보고합니다. 현재 4개 분야는 같은 5단계 구조를 사용하며, 다양한 현실 Agent 작업 전체를 대표하지는 않습니다. 판단이 필요한 지점(후보 선택, 옵션 선택)은 h3·h5에 똑같이 있고 h5에 추가된 두 호출은 ID 전달이므로, h3·h5 차이는 대화 길이와 ID 전달 증가의 효과로 해석합니다.
+## 1. 연구 질문과 가설
 
-## 폴더 구조
+선행연구에서 "양자화된 Agent는 단계가 길어질수록 오류가 증폭된다"는 주장이 있었습니다. 이 저장소는 그 주장을 **같은 상태에서 재개하는 통제 실험**으로 다시 확인하고, 두 가지 방향으로 확장합니다.
+
+1. **오류 발생과 오류 회복을 분리**합니다. 최종 성공률이 낮아진 이유가 "실수를 더 많이 해서"인지 "실수를 덜 고쳐서"인지 구분합니다.
+2. **조용한 오류**(도구가 성공을 반환해 겉으로는 문제없어 보이는 잘못된 저장)를 다룹니다. 실제 Agent에서 가장 위험한 형태입니다.
+
+| 가설 | 내용 | 검정에 쓰는 결과 |
+|---|---|---|
+| H1 증폭 | 양자화 모델의 성공률 손실(모델 − FP16)은 남은 단계가 많을수록(h1 → h3 → h5) 커진다 | `horizon_interactions` (정밀도 × horizon 상호작용) |
+| H2 발생 | 양자화할수록 자연 발생 오류(`natural_error_rate`)가 늘고, 첫 오류 위치가 앞당겨진다 | `free` 조건 요약, `success_differences` |
+| H3 회복 | 같은 오류가 주어졌을 때 양자화 모델의 회복 손실(normal − error)이 더 크다 | `recovery_penalty_differences` |
+| H4 신호 | 오류가 있다는 사실만 알려줘도 회복률이 오르며, 그 이득은 정밀도마다 다르다 | `error_restart` vs `signaled_error_restart` |
+| H5 효율 | 양자화는 모델 크기·메모리·토큰 속도를 개선한다. 위 신뢰성 손실과 함께 trade-off로 보고한다 | `model_storage_mb`, 토큰/초, 메모리 |
+
+---
+
+## 2. 실험 설계 한눈에 보기
+
+```text
+60개 기본 시나리오 (4개 분야 × 15)
+ ├─ execution 과제 (조건: free)            h1, h3, h5   → 180 task
+ └─ recovery fixture (h1, h3)                            → 120 task
+       ├─ normal_restart                  정상 기록에서 재개              120회
+       ├─ error_restart          × 오류 2종  조용한 오류 뒤 재개          240회
+       └─ signaled_error_restart × 오류 2종  같은 오류 + 감사 메시지 1줄   240회
+                                              free 180회 포함 모델당 합계 780회
+```
+
+비교 축은 네 가지이고, 나머지는 모두 고정합니다.
+
+| 축 | 수준 | 고정되는 것 |
+|---|---|---|
+| 정밀도 | FP16 / Q8_0 / Q4_K_M (선택: Q6_K 등 추가, KV cache 양자화) | 같은 원본 GGUF, 같은 서버 빌드, 같은 장비 |
+| Horizon | 남은 필수 호출 1 / 3 / 5 | 같은 질문·후보·정답 |
+| 조건 | free / normal_restart / error_restart / signaled_error_restart | 같은 checkpoint 상태·도구·예산 |
+| 오류 종류 | violating_candidate / wrong_option | 같은 checkpoint, 같은 요청 ID |
+
+고정 추론 설정: temperature 0, seed 42, 응답당 최대 512 토큰, thinking 끔, 한 응답에 도구 호출 1개, context 8192, slot 1.
+
+---
+
+## 3. 과제 세계: 4개 분야 × 5단계 작업 흐름
+
+모든 과제는 결정론적인 가짜(mock) 도구 환경에서 실행됩니다. 4개 분야 모두 **같은 5단계 구조**이고 도구 이름만 다릅니다.
+
+| 단계 | 쇼핑 | 일정 | 이동 | 장소 | 입력 | 판단 필요 |
+|---:|---|---|---|---|---|---|
+| 1 | `read_purchase_request` | `read_schedule_request` | `read_travel_request` | `read_visit_request` | 질문에 있는 `request_id` | 없음 |
+| 2 | `find_product_offers` | `find_available_slots` | `find_travel_options` | `find_place_offers` | 1의 `context_id` | 없음 |
+| 3 | `get_product_details` | `get_slot_details` | `get_fare_details` | `get_visit_details` | 2의 `offer_id` | **있음**: 조건·순위로 후보 선택 |
+| 4 | `prepare_purchase` | `prepare_event` | `prepare_itinerary` | `prepare_visit` | 3의 `detail_id` + `option_id` | **있음**: 옵션 종류 선택 |
+| 5 | `confirm_purchase` | `confirm_event` | `confirm_itinerary` | `confirm_visit` | 4의 `draft_id` | 없음 |
+
+보조 도구 2개가 항상 함께 노출됩니다.
+
+- `discard_saved_result(request_id)`: 저장된 결과 하나 삭제
+- `inspect_state()`: 저장된 최종 결과만 읽기(상태를 바꾸지 않음)
+
+**리소스 의존성.** 각 도구는 앞 도구가 실제로 만든 리소스 ID만 받습니다. 정답 ID를 추측해 넣어도 그 리소스가 아직 만들어지지 않았으면 `*_not_found`로 거절됩니다. 그래서 단계를 건너뛸 수 없고, 정답 순서를 문자열로 비교하는 채점도 필요 없습니다. 추가 조회나 다른 후보 탐색은 허용됩니다.
+
+### 시나리오 설계 규칙
+
+각 시나리오에는 후보 3개와 후보별 옵션 2개가 있습니다.
+
+- **적격 후보 2개 + 조건 위반 후보 1개.** 위반 후보는 모든 시나리오에서 **조건을 무시하면 순위 1등**입니다. 그래서 이 후보를 고르는 것은 "조건 확인을 빠뜨린" 그럴듯한 실수입니다.
+- 위반되는 조건은 시나리오마다 다릅니다(가격 초과, 평점 미달, 인원 부족, 시작 시각이 너무 이름, 도보 시간 초과 등).
+- 일부 시나리오는 **1순위 값이 동점**이라 명시된 2순위 기준을 적용해야 정답이 나옵니다.
+- **위치 균형.** 분야마다 정답 후보·위반 후보·요청 옵션·h1 정답 draft의 목록 위치가 고르게 분포합니다(개수 차이 1 이하). 위치만으로 정답을 맞힐 수 없습니다.
+- 모든 숫자는 소수 1자리 이하로 정리되어 `4.1000000000000005` 같은 표기가 모델 입력에 들어가지 않습니다.
+
+### 예시: `shopping_001`
+
+요청: "키보드 중 가격 100 이하, 평점 4.0 이상. 평점 최고를 고르고 동점이면 가격이 낮은 것. 일반 배송(`standard_delivery`)."
+
+| 후보 | 가격 | 평점 | 판정 |
+|---|---:|---:|---|
+| Keyboard candidate A | 120 | 4.9 | 가격 초과 → **위반 후보**(조건 무시 시 1등) |
+| Keyboard candidate B | 85 | 4.8 | **정답** |
+| Keyboard candidate C | 70 | 4.4 | 적격이지만 평점 낮음 |
+
+정답은 "B + standard_delivery"를 확정해 저장한 상태입니다. 금액은 가상 단위이고, `start_hour`·`depart_hour`는 그날의 24시간제 정수 시각입니다.
+
+---
+
+## 4. Horizon: 남은 단계 수
+
+`horizon`은 시작 상태에서 완료까지 **남아 있는 필수 도구 호출 수**입니다. 미리 제공된 결과와 종료 응답은 포함하지 않습니다.
+
+| Horizon | 시작할 때 이미 있는 정보 | 모델이 해야 할 일 |
+|---:|---|---|
+| 5 | 질문만 | 요청 조회 → 후보 조회 → 상세 → draft → 확정 |
+| 3 | 요청 결과, 후보 목록 | 상세 → draft → 확정 |
+| 1 | 요청, 후보, 상세 2개, **draft 3개**(정답 1, 같은 후보·다른 옵션 1, 위반 후보 1) | 3개 중 맞는 draft를 골라 확정 |
+
+h1에도 선택이 남아 있도록 오답 draft 2개를 함께 줍니다. 그렇지 않으면 h1은 "하나뿐인 draft를 확정"하는 의미 없는 과제가 됩니다.
+
+**해석상 주의.** 판단 지점(후보 선택, 옵션 선택)은 h3와 h5에 똑같이 있습니다. h5에 추가된 두 호출(요청 조회, 후보 조회)은 판단 없는 ID 전달입니다. 따라서 h3와 h5의 차이는 "추론 단계 증가"가 아니라 **"대화 길이와 ID 전달 증가"의 효과**로 보고합니다. 또 horizon이 달라지면 시작 정보량도 함께 달라지므로, "1-step 과제 대 5-step 과제"가 아니라 "올바른 정보가 주어진 지점에서 남은 단계 수"의 효과로 표현합니다.
+
+---
+
+## 5. 실험 조건 4가지
+
+| 조건 | 과제 | 앞 단계 정보 전달 방식 | 오류 | 측정 대상 |
+|---|---|---|---|---|
+| `free` | execution 180 | **사용자 메시지**에 JSON으로 첨부 (h5는 없음) | 없음 | 자연 발생 오류, 성공률, 첫 오류 위치 |
+| `normal_restart` | recovery 120 | **모델 자신의 과거 도구 호출** 기록 | 없음 | 같은 정상 상태에서의 다음 행동·성공률(회복 손실의 기준점) |
+| `error_restart` | recovery 120 × 오류 2종 | 위 기록 + 잘못된 결과를 확정한 기록 | **조용한 오류** | 신호 없이 스스로 발견·수정하는지 |
+| `signaled_error_restart` | recovery 120 × 오류 2종 | `error_restart`와 같은 기록 + 감사 메시지 1줄 | 신호 있는 오류 | 오류가 있다는 사실만 알려줬을 때 고치는지 |
+
+- `free`와 `normal_restart`는 **같은 정보**(checkpoint 상태가 동일)를 **다른 방식**으로 받습니다. 검증기가 두 조건의 상태가 같고 모델 입력은 다른지 확인합니다.
+- `error_restart`의 도구 결과는 모두 `"ok": true`입니다. 모델은 저장된 결과를 직접 다시 읽고 요청 조건과 비교해야만 오류를 알 수 있습니다.
+- 감사 메시지는 다음 한 줄이며, 후보·옵션·조건·정답을 전혀 언급하지 않습니다.
+
+  ```text
+  Automated audit notice: the result currently saved for this request does not satisfy the request. Continue working on the original request.
+  ```
+
+- `--condition recovery`는 `error_restart`의 옛 이름(별칭)이고, 결과에는 `error_restart`로 기록됩니다.
+- **h5에는 회복 fixture가 없습니다.** h5 checkpoint에는 이전 기록이 없어 `normal_restart`가 `free` h5와 완전히 같고, 잘못된 전체 경로를 주입하면 h3 오류 분기와 같은 상황이 되기 때문입니다. h5는 `free`로만 분석합니다.
+
+---
+
+## 6. 오류 종류 2가지와 복구 비용
+
+두 종류 모두 "같은 요청 ID로 잘못된 결과가 저장된 상태"(`wrong_saved_result`)입니다. `free`에서 모델이 스스로 낼 수 있는 실수와 같은 종류라서, 주입 실험의 회복률과 `free`에서 스스로 고친 비율(`wrong_save_recovery_rate`)을 나란히 비교할 수 있습니다.
+
+| 오류 종류 | 무엇이 저장됐나 | h1 주입 기록 | h3 주입 기록 | h1 최소 복구 | h3 최소 복구 |
+|---|---|---|---|---:|---:|
+| `violating_candidate` | 조건 위반 후보 + 요청 옵션 | draft 3개 중 위반 draft 확정 | 위반 후보 상세 → draft → 확정 | 1 | 3 (정답 상세 → draft → 확정) |
+| `wrong_option` | **정답 후보** + 다른 옵션 종류 | draft 3개 중 옵션 오류 draft 확정 | 정답 후보 상세 → 다른 옵션 draft → 확정 | 1 | 2 (요청 옵션 draft → 확정) |
+
+- 정상 분기의 최소 호출은 항상 horizon(h1 1, h3 3)입니다.
+- `violating_candidate`는 복구 비용이 정상 작업량과 같아 두 분기의 예산 여유가 같습니다.
+- `wrong_option`의 h3 복구는 정답 상세가 이미 기록에 있어 2회면 됩니다. 그래서 **회복 결과는 오류 종류별로 따로 보고**하고, 두 종류를 합쳐 horizon끼리 비교하지 않습니다.
+- 복구 방법은 제한하지 않습니다. 같은 요청으로 올바른 draft를 다시 확정하면 잘못된 결과가 교체되고, `discard_saved_result`로 지운 뒤 확정해도 됩니다. 처음부터 정상 경로를 다시 밟아도 성공입니다.
+- h1 checkpoint에는 `free` h1과 같은 draft 3개가 있어 정답 draft ID가 기록에 보입니다. 이것은 모든 조건이 같은 정보를 갖게 하려는 선택이며, 정답만 따로 드러나지는 않습니다.
+
+### 예시: `recovery_shopping_001_h3`, `wrong_option`, `signaled_error_restart`
+
+```text
+[USER]  Request ID: request_97c9ac5f82d4. Select the product and delivery option ... (원래 질문)
+[CALL]  read_purchase_request {"request_id": "request_97c9ac5f82d4"}           ← 정상 기록 (모델 자신의 호출로 제시)
+  ->    {"ok": true, "context_id": "context_9447...", "request": {...}}
+[CALL]  find_product_offers {"context_id": "context_9447..."}                  ← 정상 기록
+  ->    {"ok": true, "offers": [B(85, 4.8), A(120, 4.9), C(70, 4.4)]}
+[CALL]  get_product_details {"offer_id": "offer_ae54..."}                       ← 주입: 정답 후보 B
+[CALL]  prepare_purchase {"detail_id": "detail_9c4b...", "option_id": "option_e70b..."}   ← 주입: express_delivery (틀림)
+[CALL]  confirm_purchase {"draft_id": "draft_d1f0..."}                          ← 주입: 확정, "ok": true
+[USER]  Automated audit notice: the result currently saved ... does not satisfy the request. ...
+--- 모델 차례 ---
+최소 복구: prepare_purchase(detail_9c4b..., standard_delivery 옵션) → confirm_purchase(새 draft)
+```
+
+`error_restart`는 마지막 `[USER]` 감사 메시지가 없는 것만 다르고 나머지는 글자 하나까지 같습니다.
+
+---
+
+## 7. 모델이 실제로 받는 입력
+
+### 시스템 프롬프트 (모든 조건·정밀도 공통)
+
+```text
+You are a tool-using Agent. Use the available tools to complete the user request. Inspect the current state when needed.
+There is no finish tool: when the requested final state has been achieved, reply with a short final answer that contains
+no tool call. A reply without a tool call ends the task. Use English for all responses. Return at most one tool call per
+response; multiple calls in one response are rejected without executing any of them. Invalid output receives only generic
+format feedback and consumes a response turn. Resource IDs must come from the user context or tool results. Apply the
+structured request constraints and ranking rules, including tie-breakers. Prepared drafts are not final until confirmed.
+```
+
+### 질문 (원래 질문은 모든 조건에서 동일)
+
+```text
+Request ID: request_97c9ac5f82d4. Select the product and delivery option that satisfy the purchase request, then confirm
+and save the purchase item. Continue from any information or tool results already provided. When finished, the entire
+saved result set must contain only one record: the correct result for this request.
+```
+
+`free` h1·h3에서는 이 질문 아래에 `Information already available from earlier lookups for this request (tool name and its result, JSON):`라는 머리말과 앞 단계 도구 결과 JSON이 붙습니다. 질문에는 정답 후보·옵션·draft ID가 없으며, 검증기가 이를 확인합니다.
+
+### 응답 처리 규칙
+
+| 모델 응답 | 처리 | 기록 |
+|---|---|---|
+| 도구 호출 1개 | 실행하고 결과를 대화에 추가 | `tool_executed=true` |
+| 도구 호출 2개 이상 | 하나도 실행하지 않고 거절 | `model_error=multiple_tool_calls` |
+| 인자가 JSON 객체가 아님 | 거절 | `invalid_arguments` |
+| `finish_reason=length`(512토큰 잘림) | 실행 전 거절 | `output_truncated` |
+| 툴콜처럼 보이는 텍스트(`<tool_call>`, `{"name":…,"arguments":…}`) | **종료가 아니라** 형식 오류로 거절 | `unparsed_tool_call` |
+| 서버가 모델 출력을 파싱하지 못한 HTTP 500(`failed to parse input`) | 형식 오류로 거절 | `server_output_parse_failure` |
+| 그 밖의 도구 호출 없는 텍스트 | **종료** | 목표 미달이면 `premature_finish` |
+
+거절된 응답 뒤에는 모델이 실제로 낸 텍스트와 함께 고정 안내문이 대화에 들어갑니다. 안내문은 정답이나 고친 인자를 절대 알려주지 않으며, 거절된 응답도 응답 턴 1개를 소모합니다.
+
+```text
+Your last response could not be used (<종류>). Return exactly one tool call with a JSON object for its arguments,
+or a final answer if the task is complete. No action from that response was executed.
+```
+
+### 응답 턴 예산
+
+- 기본 예산 = **정상 최소 호출(horizon) + `--recovery-budget`(기본 3)**. 모든 조건에 같은 규칙을 적용합니다(`free` h5는 8턴, 회복 h3는 6턴).
+- 종료 응답과 형식 오류 응답도 1턴을 씁니다.
+- `--max-calls N`을 주면 모든 과제에 고정 상한 N을 씁니다. 이 경우 모든 조건·정밀도에 같은 값을 줘야 합니다.
+- 미리 제공한 기록과 주입한 오류 호출은 모델 호출·오류 수·시간·토큰에 포함하지 않습니다.
+
+---
+
+## 8. 채점 규칙
+
+### 성공 판정
+
+성공은 **최종 저장 상태**만 봅니다. 마지막 도구 이름이나 `last_result`는 사용하지 않습니다.
+
+- 저장된 결과 전체(`completed_requests`)가 **정답 결과 하나와 정확히 같아야** 성공입니다.
+- 정답을 저장한 뒤 `inspect_state`로 확인해도 성공이 유지됩니다.
+- 정답을 저장했다가 다시 망가뜨리면 실패입니다(`recovery_completion_step`에는 처음 도달한 시점이 남습니다).
+
+### 오류 분류
+
+한 응답에 오류 표지가 여러 개 있어도 1회로 셉니다. 첫 오류의 종류(`first_error_kind`)는 아래 접두사 중 하나입니다.
+
+| 분류 | 예 | 의미 |
+|---|---|---|
+| `model_output:*` | `multiple_tool_calls`, `invalid_arguments`, `output_truncated`, `unparsed_tool_call`, `server_output_parse_failure`, `invalid_action` | 형식을 지키지 못한 응답 |
+| `tool_error:*` | `unknown_tool`, `invalid_arguments`, `offer_not_found`, `draft_not_found` 등 | 도구가 거절한 호출 |
+| `semantic:*` | `saved_result_violates_request`, `removed_requested_result`, `premature_finish` | 실행은 됐지만 요청과 어긋난 행동 |
+
+**ID 복사 오류와 선택 오류를 분리합니다.**
+
+- **ID 복사 오류**(`identifier_error_*`): 앞 결과가 발급하지 않은 ID를 쓴 경우입니다. 도구 오류 `unknown_request`, `context_not_found`, `offer_not_found`, `detail_not_found`, `unknown_option`, `draft_not_found`가 여기에 해당합니다. 16자리 해시 ID를 여러 번 옮겨 적어야 하므로 긴 문자열 복사 능력과 관련됩니다.
+- **선택 오류**(`wrong_save_*`): 존재하는 ID지만 틀린 후보·옵션을 저장한 경우(`saved_result_violates_request`)입니다. 판단 능력과 관련됩니다.
+
+이 둘을 나눠야 "Q4가 판단을 더 틀린다"와 "Q4가 긴 ID를 더 잘못 옮긴다"를 구분할 수 있습니다.
+
+다음은 오류가 아닙니다: 추가 조회, 다른 후보 탐색, `inspect_state`, 삭제 순서의 차이.
+
+### 인프라 장애는 분모에서 제외
+
+| 상황 | 분류 | 처리 |
+|---|---|---|
+| HTTP 오류, 타임아웃, 연결 실패, 서버 응답 JSON 형식 오류 | `infrastructure_error` | 실행 중단, 행동 지표 분모에서 제외 |
+| 예상하지 못한 코드 예외 | `internal_error` | 같음 |
+| 단, HTTP 500 본문이 `failed to parse input` | 모델 출력 오류 | **제외하지 않음** (형식을 더 자주 깨는 정밀도가 분모에서 빠져 유리해지는 것을 막기 위함) |
+
+짝지은 비교에서는 한쪽이라도 장애가 있으면 그 쌍을 제외하고 제외 개수를 보고합니다. 제외가 많거나 특정 정밀도에 몰리면 서버를 먼저 점검하고 해당 과제를 다시 수집합니다. 자동 재시도는 없습니다.
+
+---
+
+## 9. 지표 사전
+
+### 과제 단위 점수 (`score`, 결과 JSONL 한 줄마다)
+
+| 지표 | 정의 |
+|---|---|
+| `strict_success` | 최종 저장 상태가 정답과 정확히 같고 인프라 장애가 없음 |
+| `valid_for_behavior_metrics` | 인프라/코드 장애가 없어 행동 지표에 포함됨 |
+| `termination_reason` | `finished` / `budget_exhausted` / `infrastructure_error` / `internal_error` |
+| `natural_error` | (`free`만) 오류를 한 번 이상 냈는지 |
+| `natural_error_recovered` | (`free`만) 오류를 냈지만 최종 성공했는지 |
+| `error_count`, `error_turn_rate` | 오류 응답 수, 전체 응답 대비 비율 |
+| `model_output_error_count` | 형식 오류 응답 수 (7절 표의 모든 형식 오류) |
+| `tool_error_action_count`, `tool_action_error_rate` | 실제 실행된 호출 중 거절·잘못된 상태 변경 수와 비율 |
+| `identifier_error_count`, `identifier_error_episode` | ID 복사 오류 수, 한 번이라도 있었는지 |
+| `wrong_save_count`, `wrong_save_episode`, `wrong_save_recovered` | 요청 위반 결과 저장 수, 있었는지, 그 뒤 고쳐서 성공했는지 |
+| `first_error_turn` (=`first_error_step`) | 재개 후 1부터 센 첫 오류 응답 턴 |
+| `first_error_kind`, `first_error_tool` | 첫 오류의 분류와 도구 |
+| `first_error_workflow_stage` | 첫 오류가 5단계 중 몇 번째 단계 도구에서 났는지(1~5, 보조 도구면 null). horizon이 달라도 비교 가능 |
+| `next_action_correct` | 첫 응답이 기준 경로의 첫 호출(도구·인자 모두)과 같은지 |
+| `next_action_valid` | 첫 응답이 오류 없이 실행된 도구 호출인지(다른 유효한 조회 포함) |
+| `response_turn_count` | 모델 응답 수(종료·형식 오류 포함) |
+| `attempted_tool_call_count` | 모델이 낸 도구 호출 시도 수(거절된 다중 호출 포함) |
+| `executed_tool_call_count` (=`tool_call_count`) | 실제 도구 실행기에 전달된 호출 수 |
+| `extra_calls_over_normal` | 실행 호출 − 정상 최소 호출 |
+| `extra_calls_over_oracle` | 실행 호출 − 해당 분기의 최소 호출(오류 분기는 최소 복구 호출) |
+| `budget_exhausted` | 응답 턴 예산을 모두 씀 |
+
+### 회복 전용 점수 (오류 분기만)
+
+| 지표 | 정의 |
+|---|---|
+| `error_kind` | 주입된 오류 종류 |
+| `recovery_success` | 잘못된 저장을 바로잡고 원래 목표 달성 |
+| `recovery_error_resolved` | 최종 상태에 주입된 잘못된 결과가 없음. 지우기만 하고 정답을 저장하지 않으면 true이면서 실패일 수 있음 |
+| `recovery_first_resolution_turn` (=`recovery_resolution_step`) | 잘못된 결과가 처음 사라진 응답 턴 |
+| `recovery_stable_resolution_turn` | 마지막 재발 이후 제거가 유지되기 시작한 턴 |
+| `recovery_completion_step` | 목표 상태에 처음 도달한 턴 |
+| `recovery_error_count`, `recovery_first_error_step` | 재개 후 모델이 **새로** 낸 오류 수와 첫 위치(주입된 오류는 세지 않음) |
+| `normal_remaining_calls`, `recovery_min_calls` | 정상 최소 호출, 최소 복구 호출 |
+
+### 효율 점수
+
+| 지표 | 정의 |
+|---|---|
+| `elapsed_ms` | 과제 전체 시간(워밍업 제외) |
+| `ms_per_response_turn` | 응답 턴당 평균 시간 |
+| `prompt_eval_tokens`, `prompt_eval_ms`, `generated_tokens`, `generation_ms` | llama.cpp 응답의 `timings` 합계 |
+| `prompt_tokens_per_second`, `generation_tokens_per_second` | 위 값으로 계산한 처리량 |
+| `prompt_tokens`, `completion_tokens` | 서버가 보고한 사용 토큰 |
+| `peak_server_ram_mb` | `--server-pid`로 지정한 서버 프로세스의 최대 RSS(psutil 필요) |
+| `peak_gpu_memory_mb` | `--gpu-index`를 준 경우 NVIDIA GPU **전체** 사용 메모리 최대값 |
+| `max_ram_mb` | Python 실행기의 과제 종료 시점 RSS |
+
+### 요약표 (`condition_summaries`, 모델 × 조건 × horizon × 오류 종류마다 한 행)
+
+| 지표 | 정의 |
+|---|---|
+| `n`, `n_valid`, `n_runtime_errors` | 전체 / 행동 지표에 포함 / 장애로 제외된 실행 수 |
+| `success_rate` | 유효 실행 중 성공 비율 |
+| `natural_error_rate` | (`free`) 오류를 한 번이라도 낸 **과제의 비율**. 호출당 오류율이 아님 |
+| `natural_error_recovery_rate` | (`free`) 오류를 낸 과제 중 결국 성공한 비율 |
+| `wrong_save_episode_rate`, `wrong_save_recovery_rate` | 위반 결과를 저장한 과제 비율, 그중 스스로 고쳐 성공한 비율 |
+| `identifier_error_episode_rate`, `mean_identifier_error_count` | ID 복사 오류가 있었던 과제 비율, 평균 횟수 |
+| `behavior_error_episode_rate` | 오류가 한 번이라도 있었던 과제 비율(모든 조건) |
+| `pooled_error_turn_rate`, `pooled_tool_action_error_rate` | 분자·분모를 과제 전체에서 합친 비율 |
+| `first_error_stage_counts` | 첫 오류가 난 작업 단계(1~5)별 과제 수 |
+| `next_action_accuracy`, `next_action_valid_rate` | 첫 응답 정확도 |
+| `recovery_rate`, `recovery_error_resolved_rate` | (오류 분기) 회복 성공률, 잘못된 결과 제거율 |
+| `mean_extra_calls_over_normal` / `_over_oracle` | **성공한 실행만** 평균한 추가 호출 |
+| `mean_extra_calls_over_normal_all_runs` | 실패 포함 전체 평균(생존 편향 없는 보조 지표) |
+| `mean_elapsed_ms` | 일찍 실패한 실행도 포함한 평균 시간. **정밀도 간 속도 비교에 쓰지 않음** |
+| `mean_elapsed_ms_successful` | 성공한 실행만의 평균 시간 |
+| `mean_ms_per_response_turn` | 응답 턴당 지연 |
+| `pooled_prompt_tokens_per_second`, `pooled_generation_tokens_per_second` | 전체 토큰 합 ÷ 전체 시간 합 |
+| `mean_peak_server_ram_mb`, `mean_peak_gpu_memory_mb` | 메모리 |
+| `model_storage_mb`, `model_quantization` | `models/manifest.json`에서 찾은 모델 파일 크기와 양자화 형식 |
+
+### 짝지은 회복 비교 (`recovery_comparison`, 모델 × horizon × 오류 분기 × 오류 종류마다 한 행)
+
+| 지표 | 정의 |
+|---|---|
+| `normal_restart_success_rate` | 공통 정상 checkpoint에서의 성공률 |
+| `error_restart_success_rate` (=`recovery_rate`) | 오류 분기 성공률 |
+| `recovery_penalty` | 같은 fixture 쌍의 (정상 성공 − 오류 성공) 평균. **회복 손실** |
+| `recovery_error_resolved_rate` | 잘못된 결과 제거율 |
+| `immediate_finish_rate` | 오류 분기의 첫 응답이 곧바로 "완료"한 비율(조용한 오류를 전혀 의심하지 않은 정도) |
+| `mean_extra_calls_over_normal` / `_over_oracle` | 성공한 오류 실행의 추가 호출(`n_successful_error_runs`와 함께) |
+| `error_restart_budget_exhausted_rate`, `normal_restart_budget_exhausted_rate` | 예산 소진 비율 |
+| `recovery_min_calls` | 이 행의 최소 복구 호출 |
+
+장비·모델 hash·task hash·seed·추론 설정·예산·평가 버전·Agent 정책 버전·KV cache 형식이 다른 기록은 같은 쌍으로 묶지 않습니다. 같은 실행을 중복 입력하면 오류로 알립니다.
+
+---
+
+## 10. 통계 분석
+
+### 분석 단위
+
+60개 기본 시나리오가 독립 단위입니다. 같은 시나리오의 h1·h3·h5, 같은 fixture의 정상·오류 분기는 **짝지은 관측**이지 독립 표본이 아닙니다. 모든 비교는 같은 과제(또는 같은 시나리오)끼리 짝지어 계산합니다. temperature 0으로 과제당 한 번 실행하므로 과제 안의 샘플링 변동은 추정하지 않습니다.
+
+### `precision_comparison`의 세 가지 비교 (모두 모델 − 기준 모델)
+
+**① `success_differences`: 칸별 성공률 차이**
+
+조건 × horizon(회복은 `조건:오류종류`) 칸마다, 같은 task ID끼리 짝지어 계산합니다.
+
+- `success_difference`: 평균 차이
+- `difference_ci95`: 과제를 재표집한 percentile bootstrap 95% 구간(2,000회, seed 0)
+- `only_reference_succeeded`, `only_model_succeeded`: 엇갈린 쌍의 수
+- `mcnemar_exact_p`: 엇갈린 쌍에 대한 양측 정확 McNemar 검정
+
+**② `horizon_interactions`: 핵심 가설 H1 검정**
+
+기본 시나리오마다 다음 값을 계산합니다.
+
+```text
+interaction = (모델 성공 − 기준 성공)@긴 horizon − (모델 성공 − 기준 성공)@짧은 horizon
+```
+
+- 평균이 **음수**면 양자화 손실이 긴 horizon에서 더 크다는 뜻(증폭)입니다.
+- `gap_short`, `gap_long`: 각 horizon에서의 평균 성공률 차이
+- `sign_flip_p`: 양측 정확 sign-flip 순열 검정. 시나리오별 값의 부호를 무작위로 뒤집은 분포와 비교합니다(0인 시나리오는 정보가 없어 제외). 정수 차이이므로 전체 분포를 정확히 계산합니다.
+- 조합: `free`는 (1,3), (1,5), (3,5), 회복 조건은 (1,3)
+
+**③ `recovery_penalty_differences`: 가설 H3 검정**
+
+fixture마다 `(정상 − 오류)@모델 − (정상 − 오류)@기준`을 계산합니다. 양수면 양자화 모델의 회복 손실이 더 큽니다. 오류 분기(조용한/신호)와 오류 종류별로 따로 계산하고, 같은 sign-flip 검정을 씁니다.
+
+### 다중 비교 보정
+
+세 묶음 각각 안에서 Holm-Bonferroni 보정 p값(`mcnemar_holm_p`, `sign_flip_holm_p`)을 함께 줍니다. 논문에는 보정된 p값을 쓰고, 사전에 정한 주 검정과 탐색적 검정을 구분합니다.
+
+**권장 주 검정(실험 전에 팀이 확정):**
+
+1. `free`, Q4 vs FP16, (h1, h5) 상호작용 → H1
+2. `error_restart:violating_candidate`, Q4 vs FP16, h3 회복 손실 차이 → H3
+
+나머지는 탐색적 결과로 보고합니다.
+
+### 검정력 감각
+
+엇갈린 쌍이 모두 한 방향일 때 양측 정확 검정이 p < 0.05가 되려면 엇갈린 쌍이 최소 6개 필요합니다(2 × 0.5⁶ ≈ 0.031). 60개 짝이면 약 10%p 차이부터 잡힐 수 있지만, 엇갈림이 양방향으로 섞이면 더 큰 차이가 필요합니다. FP16과 Q8의 차이는 작을 가능성이 높으므로 "유의한 차이 없음"을 "차이 없음"으로 쓰지 말고 신뢰구간으로 보고합니다.
+
+### 혼합 장비 방지
+
+정밀도 비교는 모든 라벨의 다음 값이 같아야 실행됩니다: hostname, OS, CPU, machine, seed, 추론 설정, 설정 잠금 hash, 서버 설정 hash, 데이터 버전·hash, 지표·정책 버전, 예산, 워밍업 설정. 모델 경로·hash와 KV cache 형식은 비교 대상이라 제외합니다. 다르면 어느 필드가 다른지 알려주고 중단합니다. 꼭 필요할 때만 `--allow-mixed-configuration`을 주고, 보고서에 그 사실을 적습니다.
+
+---
+
+## 11. 저장소 구조
 
 ```text
 ondevice/
 ├─ README.md
-├─ requirements.txt
-├─ .github/workflows/validate-dataset.yml # GitHub 업로드·PR 시 오프라인 검사
-├─ tests/test_dataset_validation.py # 잘못된 데이터가 거부되는지 회귀 검사
-├─ tests/test_behavior_metrics.py # 출력 오류·서버 장애·회복 지표 회귀 검사
-├─ tests/test_run_preparation.py # 설정 잠금·워밍업·서버 점검 회귀 검사
-├─ tests/test_precision_comparison.py # 정밀도 간 짝지은 비교·GPU 메모리 샘플링 검사
-├─ tasks/tasks.json
+├─ requirements.txt                    # 표준 라이브러리만 필요 (psutil·matplotlib는 선택)
+├─ .github/workflows/validate-dataset.yml  # push·PR 때 데이터 검증·생성기 일치·테스트·smoke 자동 실행
+├─ models/
+│  └─ manifest.json                    # 모델 파일 경로·크기·SHA-256·양자화 명령 (모델 파일은 Git에 올리지 않음)
+├─ tasks/
+│  ├─ tasks.json                       # 생성된 300개 task (직접 수정 금지)
+│  ├─ EXECUTION_TASKS.md               # 생성된 정상 시나리오 카탈로그
+│  └─ RECOVERY_TASKS.md                # 생성된 회복 설계·목록
 ├─ src/
-│  ├─ tasks.py          # task 로딩과 검증
-│  ├─ dataset_validation.py # JSON·형식·영어·정보 누락·의미를 묶은 통합 검증
-│  ├─ client.py         # FakeClient와 llama.cpp client
-│  ├─ run_preparation.py # 공통 설정 검사·잠금과 별도 더미 워밍업
-│  ├─ environment.py    # 결정론적 mock tool과 상태 관리
-│  ├─ execution_environment.py # 리소스 의존성이 있는 execution-v2 도구
-│  ├─ execution_validation.py  # 정답·우회 경로·최종 상태 검증
-│  ├─ recovery_validation.py   # 대응 checkpoint·복구 필요성 검증
-│  ├─ recovery_comparison.py   # 동일 조건의 정상/오류 쌍 비교
-│  ├─ workflow_metrics.py      # v2 task의 상태·행동 기반 v3 지표
-│  ├─ agent.py          # 공통 Agent 실행 루프
-│  ├─ metrics.py        # 성공·오류·회복 지표
-│  ├─ precision_comparison.py # 정밀도 간 짝지은 차이·McNemar·bootstrap
-│  └─ experiment.py     # batch 실행과 메타데이터 기록
-└─ scripts/
-   ├─ smoke_test.py     # 모델 없이 전체 흐름 검사
-   ├─ validate_tasks.py  # task 중복·누락·대응 관계 검증
-   ├─ build_tasks.py     # 두 영어 task 유형과 카탈로그를 함께 검증·재생성
-   ├─ build_execution_tasks.py # 20개 시나리오 정의와 JSON 일치 검사
-   ├─ build_recovery_tasks.py  # execution과 대응하는 회복 fixture 생성·검사
-   ├─ run_experiment.py # 실제 llama.cpp 실행
-   └─ analyze.py        # JSONL 결과 집계
+│  ├─ dataset_spec.py                  # 데이터 버전·시나리오 수·horizon·오류 종류의 단일 정의
+│  ├─ tasks.py                         # Task 구조, 로딩, 오류 종류 선택(with_error_kind)
+│  ├─ dataset_validation.py            # JSON·형식·영어·정보 유출·의미·생성기 일치 통합 검증
+│  ├─ execution_validation.py          # 정답 추론, 우회 차단, 위치 균형, 부동소수점 검사
+│  ├─ recovery_validation.py           # checkpoint 일치, 오류 2종 독립 계산, 분기 입력 분리
+│  ├─ execution_environment.py         # 5단계 리소스 도구, 조건별 대화 생성, 오류 주입, 감사 메시지
+│  ├─ environment.py                   # 시스템 프롬프트, 구버전 도구(우회 차단용)
+│  ├─ client.py                        # llama.cpp HTTP client, 응답 파싱, 형식 오류 분류
+│  ├─ run_preparation.py               # 서버 /props 검사, 설정 잠금, 워밍업
+│  ├─ agent.py                         # 공통 Agent 실행 루프, 형식 피드백, timings 수집
+│  ├─ workflow_metrics.py              # 과제 단위 점수
+│  ├─ metrics.py                       # 요약표 집계
+│  ├─ recovery_comparison.py           # 정상/오류 분기 짝 비교
+│  ├─ precision_comparison.py          # 정밀도 비교·상호작용·McNemar·sign-flip·Holm
+│  └─ experiment.py                    # batch 실행, 메모리 측정, 메타데이터 기록
+├─ scripts/
+│  ├─ run_experiment.py                # 실제 llama.cpp 실행
+│  ├─ analyze.py                       # 결과 집계, CSV, 그래프
+│  ├─ quantize_models.py               # 같은 원본에서 Q8·Q4(+추가 단계) 생성, manifest 기록
+│  ├─ validate_tasks.py                # 데이터 검증 보고서
+│  ├─ smoke_test.py                    # 모델 없이 모든 분기(780개) 정답 재생
+│  ├─ build_tasks.py                   # 두 생성기를 함께 실행·검사(--write / --check)
+│  ├─ build_execution_tasks.py         # 60개 시나리오 정의
+│  └─ build_recovery_tasks.py          # 회복 fixture(오류 2종) 정의
+└─ tests/                              # 회귀 테스트 162개
 ```
 
-모델 파일(`.gguf`), 가상환경, 실행 로그는 Git에 올리지 않습니다.
+Git에 올리지 않는 것: `models/*.gguf`, `.venv/`, `logs/`, `results/`.
 
-## 새 PC에서 팀원이 시작하는 순서
+---
 
-이 저장소에는 실험 코드·task·설정만 올립니다. `.gguf` 모델, `.venv`, `logs/`, `results/`는 용량이 크거나 PC별로 달라질 수 있으므로 GitHub에서 내려받지 않습니다. 새 PC에서는 다음 순서로 환경을 다시 만듭니다.
+## 12. 환경 준비 (처음 한 번)
 
-### 0. 저장소 복제
+필요한 것: **Python 3.11 이상**, Git, llama.cpp 빌드(13절).
 
-현재 저장소 주소를 예시로 사용했습니다. 저장소 주소가 바뀌면 `git clone`의 주소만 바꾸면 됩니다.
+### Windows (PowerShell)
 
-```bash
-git clone https://github.com/dltpgh6021/ondevice.git
-cd ondevice
+```powershell
+cd $env:USERPROFILE\ondevice
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1          # 실행 정책 오류가 나면: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+python -m pip install -r requirements.txt
+python -m pip install "psutil>=6.0,<8.0" "matplotlib>=3.8,<4.0"   # 선택: 서버 RAM 측정, 그래프
 ```
 
-Windows CMD에서는 다음처럼 실행해도 됩니다.
+### Windows (CMD)
 
 ```cmd
-git clone https://github.com/dltpgh6021/ondevice.git
-cd ondevice
-```
-
-### 1. Python 환경 준비
-
-Python 3.11 이상과 Git을 설치한 뒤, 이 README의 가상환경·패키지 설치 절차를 실행합니다. GPU PC에서도 Python 가상환경은 CPU PC와 같은 방식으로 만듭니다.
-
-```text
+cd /d "%USERPROFILE%\ondevice"
+py -3 -m venv .venv
+.venv\Scripts\activate
 python -m pip install -r requirements.txt
-python scripts\smoke_test.py
 ```
 
-`SMOKE TEST PASSED`가 출력되면 모델 없이도 task와 Agent 실행 흐름이 정상입니다. 이 단계가 실패하면 모델을 준비하기 전에 `tasks/`, `src/`, Python 버전을 먼저 확인합니다.
+### WSL / Linux / macOS
 
-## task 세트 검증
-
-본 실험을 시작하기 전에 다음 명령으로 100개 task의 구성을 검사합니다.
-
-```text
-python scripts\validate_tasks.py
+```bash
+cd ~/ondevice
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-WSL/macOS에서는 `python scripts/validate_tasks.py`를 사용합니다. `valid: true`와 `execution_semantics.valid`, `recovery_semantics.valid`가 모두 true이면 구성과 두 task 유형의 코드 검증이 통과한 것입니다. 실제 모델의 능력이나 논문 결론이 검증됐다는 뜻은 아닙니다.
+가상환경이 켜지면 명령줄 앞에 `(.venv)`가 붙습니다. 이후 모든 명령은 저장소 최상위 폴더에서 실행합니다. 경로는 슬래시(`/`)를 써도 Windows에서 그대로 동작합니다.
 
-검증 항목은 다음과 같습니다.
+---
 
-- 전체 100개 task
-- execution 60개와 recovery 40개(h1·h3, h5 회복 fixture 없음)
-- 각 task 유형·horizon 조합별 20개
-- 중복 task ID 없음
-- 모든 execution task에 대응하는 recovery task 존재
-- 대응 task의 horizon과 domain 일치
-- execution의 20개 기본 시나리오가 h1·h3·h5에서 같은 질문·환경·목표를 유지
-- 요청의 조건과 우선순위로 유일한 정답을 독립적으로 계산
-- 60개 정답 경로 실행 성공 및 완료 후 조회에도 성공 유지
-- 정답 경로의 부분 경로, 인접 순서 교환에서 우회 성공 없음
-- 기존 장바구니/일정 도구를 통한 우회 차단, 다른 후보·옵션의 잘못된 완료 거부
-- `free`는 앞 단계 결과를 사용자 메시지로만 받고, h1에는 서로 다른 draft 3개 중 정답이 1개뿐임
-- h1의 오답 draft 2개를 확정하면 실패하고, 이후 정답 draft를 다시 확정하면 성공
-- `free`와 `normal_restart`는 checkpoint 상태가 같고(h1은 같은 draft 3개) 모델 입력은 서로 다름
-- 모든 조건(free 60, normal_restart 40, error_restart 40)의 모델 입력이 호출 ID 이름을 무시해도 서로 다름
-- 회복 최소 호출이 정상 최소 호출(= horizon)과 같음
-- 모든 시나리오에서 조건 위반 후보가 조건을 무시한 순위로 단독 1등
-- 회복 두 분기의 공통 checkpoint·원래 질문·실제 오류 관측 기록 일치
-- 주입 오류가 같은 요청 ID로 조건 위반 후보를 저장한 것이며, 공개 규칙으로 독립 계산한 경로와 일치
-- 최소 복구 경로·삭제 후 재확정·정상 경로 재수행이 모두 성공하고, 복구 경로의 부분 생략과 잘못된 재확정은 실패
+## 13. llama.cpp 준비
 
-추가 검증 항목은 JSON의 중복 키·NaN/Infinity·잘못된 자료형, 빈 질문, 질문에 필요한 요청 ID 누락, 정답 후보/옵션/견적 ID 유출, 기본 시나리오 내용 중복, 생성기 원본과의 문구·조건 불일치입니다. 숫자 `1`을 `true`나 문자열 `"1"`로 바꾸는 경우도 통과하지 못합니다.
+`llama-server`(또는 통합 실행 파일 `llama`)와 `llama-quantize`가 필요합니다. **세 정밀도 모두 같은 빌드, 같은 장비, 같은 옵션**으로 실행해야 비교가 공정합니다. 서버의 `build_info`가 설정 잠금에 기록되므로 빌드가 바뀌면 실행이 거부됩니다.
 
-모델에 제공되는 시스템/사용자 메시지·도구 정의·주입된 관측·정답 경로의 후속 반환값까지 140개 조건에서 검사합니다. 영어 데이터는 `language=en`, `dataset_version=workflow-en-v3`로 표시하며 비ASCII 문자열 혼입을 차단합니다. 이 검사는 영어 문장의 논리적 정확성을 증명하는 언어 판별기는 아니므로 시나리오 내용은 사람이 검토해야 합니다.
+[llama.cpp Releases](https://github.com/ggml-org/llama.cpp/releases)에서 장비에 맞는 Windows x64 패키지를 받아 압축을 풉니다.
 
-독립 검증과 보고서 저장, 결함 회귀 검사는 다음과 같습니다. Windows CMD/PowerShell·WSL·macOS에서 같은 슬래시 경로를 사용할 수 있습니다.
+| 장비 | 패키지 | `--n-gpu-layers` |
+|---|---|---|
+| NVIDIA GPU | CUDA 빌드 (릴리스 설명의 CUDA DLL도 함께) | `99` (전체 GPU) |
+| Intel Arc / 내장 GPU, AMD | Vulkan 빌드 | `99` (전체 GPU) |
+| GPU 없음 | CPU 빌드 | `0` |
+
+```powershell
+# 예: C:\Users\<이름>\llama-bin-vk 에 풀었을 때
+$env:PATH += ";$env:USERPROFILE\llama-bin-vk"
+llama-server --version
+llama-quantize --help
+```
+
+소스 빌드가 필요하면 [공식 빌드 문서](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)를 따릅니다(CUDA: `-DGGML_CUDA=ON`, Vulkan: `-DGGML_VULKAN=ON`). 빌드된 실행 파일은 보통 `build\bin\Release\`에 있습니다.
+
+### 서버 실행 명령 (모든 정밀도 공통 옵션)
 
 ```text
-python scripts/validate_tasks.py --output results/dataset_validation_en.json
+llama-server -m models/Qwen3-1.7B-f16.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
+```
+
+| 옵션 | 이유 |
+|---|---|
+| `--jinja` | 모델 내장 chat template로 도구 호출을 처리 |
+| `--reasoning off` | Qwen3의 thinking 끄기. 빌드가 이 옵션을 모르면 지워도 됩니다(요청마다 `enable_thinking=false`를 보냅니다) |
+| `--ctx-size 8192 --parallel 1` | 실행기가 `/props`에서 context 8192, slot 1을 요구합니다 |
+| `--cache-type-k/v f16`, `--flash-attn off` | 이번 비교의 공통 기준. 최적 속도 설정이라는 뜻은 아님 |
+| `--n-gpu-layers` | 위 표 참고. FP16이 장비 메모리에 다 올라가지 않으면 세 정밀도 모두 같은 고정 레이어 수로 맞춥니다 |
+
+통합 실행 파일 배포본은 `llama-server` 대신 `llama serve`로 같은 옵션을 씁니다. 서버 시작 로그에서 실제로 GPU에 올라간 레이어 수와 KV cache 크기를 확인하고, 로그를 결과와 함께 보관합니다.
+
+---
+
+## 14. 모델 준비와 양자화
+
+### 원본 F16 GGUF 받기 (약 4GB)
+
+```powershell
+curl.exe -L -o models\Qwen3-1.7B-f16.gguf "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-f16.gguf"
+```
+
+### 같은 원본에서 Q8·Q4 만들기
+
+```text
+python scripts/quantize_models.py --source models/Qwen3-1.7B-f16.gguf --output-dir models
+```
+
+```text
+원본 F16 GGUF ─┬─ llama-quantize → Qwen3-1.7B-f16-Q8_0.gguf
+               └─ llama-quantize → Qwen3-1.7B-f16-Q4_K_M.gguf
+```
+
+- Q8을 다시 Q4로 바꾸지 않습니다. 모든 단계를 **같은 원본**에서 독립적으로 만듭니다.
+- `models/manifest.json`에 각 파일의 경로, 크기, SHA-256, 양자화 형식, 실행한 명령, llama.cpp 버전이 기록됩니다.
+- 실행 파일이 PATH에 없으면 `--quantizer C:\...\llama-quantize.exe --llama C:\...\llama-server.exe`로 경로를 줍니다.
+- 명령만 미리 보려면 `--dry-run`을 붙입니다.
+
+### trade-off 곡선용 추가 단계 (선택)
+
+```text
+python scripts/quantize_models.py --source models/Qwen3-1.7B-f16.gguf --output-dir models --extra-types Q6_K,Q5_K_M,Q3_K_M --force
+```
+
+- 기존 manifest는 지우지 않고 **병합**합니다. 원본 hash가 다른 manifest에는 쓰지 않습니다.
+- 이미 있는 파일을 다시 만들 때는 `--force`가 필요합니다(같은 원본·같은 명령이면 결과는 같습니다).
+- 결과 라벨에 양자화 이름(`self-Q6_K`처럼)을 넣으면 분석이 manifest에서 파일 크기를 찾아 `model_storage_mb`에 넣습니다.
+
+### 공식 배포 Q8·Q4와의 대조 (선택)
+
+양자화 경로가 결과에 영향을 주는지 보려면 공식 파일(`ggml-org/Qwen3-1.7B-GGUF:Q8_0`, `:Q4_K_M`)도 실행해 `reference-Q8`, `reference-Q4` 라벨로 비교합니다. `--reference-q8`, `--reference-q4` 옵션으로 manifest에 기록할 수 있습니다. 공식 파일이 다른 체크포인트나 다른 형식에서 만들어졌다면 같은 정밀도의 순수 비교가 아니므로 따로 해석합니다.
+
+---
+
+## 15. 실행 전 점검
+
+모델 없이 몇 분 안에 끝납니다. 하나라도 실패하면 실험을 시작하지 마세요.
+
+```text
+python scripts/validate_tasks.py --output results/dataset_validation.json
+python scripts/build_tasks.py --check
 python -m unittest discover -s tests -v
+python scripts/smoke_test.py
 ```
 
-성공 시 `valid: true`와 오류 없는 보고서를 출력합니다. 실패 시 `valid: false`, 실패한 `stage`, `errors`를 출력하고 종료 코드 1로 끝납니다. 보고서의 `dataset_sha256`은 내용 기준, `tasks_file_sha256`은 파일 바이트 기준 hash입니다. `results/` 보고서는 Git에 올리지 않고 결과 공유 폴더에 함께 보관합니다.
+| 명령 | 성공 표시 | 확인하는 것 |
+|---|---|---|
+| `validate_tasks.py` | `"valid": true` | 아래 검증 항목 전체 |
+| `build_tasks.py --check` | `All 300 English tasks match ...` | `tasks.json`·카탈로그가 생성기와 일치 |
+| `unittest` | `OK` (162개) | 결함 회귀 검사 |
+| `smoke_test.py` | `SMOKE TEST PASSED` (실행 180/180, 회복 600/600) | 모든 분기의 정답 재생과 채점 |
 
-`run_experiment.py`도 같은 전체 검증을 서버 접속 전에 자동 수행합니다. `--limit 1`을 넣어도 검증은 100개 전체에 적용합니다. 실패하면 모델을 실행하지 않습니다. 실행 metadata에는 데이터 언어·버전·내용 hash·검증기 버전이 남습니다. 입력 task 파일을 결과 파일로 덮어쓰는 `--output` 지정도 거부합니다.
+### 데이터 검증 항목
 
-GitHub용 `.github/workflows/validate-dataset.yml`도 추가했습니다. 저장소에 업로드된 후 push·pull request 때 Python 표준 라이브러리만으로 데이터 검증·생성기 일치·회귀 검사·smoke test를 수행하도록 설정되어 있습니다. 실제 GitHub 실행 성공은 업로드 후 Actions 탭에서 확인합니다.
+**구성**
+- 300개 task, execution 180 / recovery 120, 유형·horizon별 60개, 분야별 균형, 중복 ID 없음
+- 모든 h1·h3 execution에 대응하는 recovery fixture, fixture마다 오류 2종(순서·라벨 일치)
 
-이 검사는 정답 부분 경로와 리소스 의존성을 검사합니다. 임의의 모든 도구 인자·행동열을 전수 탐색한 검사는 아닙니다. 기존 두 생성기의 `--check`도 사용할 수 있으며, 두 유형을 함께 확인하는 명령은 `python scripts/build_tasks.py --check`입니다.
+**정답과 우회 차단**
+- 요청의 조건과 순위 규칙만으로 유일한 정답을 독립 계산하고, 저장된 정답과 일치
+- 180개 정답 경로 실행 성공, 완료 후 `inspect_state`에도 성공 유지
+- 정답 경로의 모든 부분 경로, 인접 순서 교환, 구버전 장바구니·일정 도구로는 성공 불가
+- 다른 후보·옵션으로 완료하면 실패
+- h1의 오답 draft 2개를 확정하면 실패하고, 이후 정답 draft를 확정하면 성공
 
-### task를 수정할 때
+**설계 품질**
+- 모든 시나리오에서 위반 후보가 조건 무시 시 **단독 1등**
+- 분야마다 정답 후보·위반 후보·요청 옵션·h1 정답 draft 위치가 균형
+- 모델 입력 숫자에 부동소수점 잔재 없음
 
-`tasks/tasks.json`은 생성된 파일입니다. 질문·조건은 `scripts/build_execution_tasks.py`, 회복 오류 설계는 `scripts/build_recovery_tasks.py`에서 수정한 뒤 다음을 실행합니다.
+**조건 분리**
+- `free`는 앞 단계 결과를 사용자 메시지로만 받음
+- `free`와 `normal_restart`의 checkpoint 상태가 같고 모델 입력은 다름
+- 모든 조건·오류 종류의 모델 입력(호출 ID 이름을 무시하고 비교)이 서로 다름
+- `signaled_error_restart` = `error_restart` + 감사 메시지 1줄과 정확히 같음, 감사 메시지에 정답 ID 없음
+
+**회복**
+- 주입 기록이 공개 규칙으로 독립 계산한 경로와 일치(위반 후보 / 정답 후보 + 다른 옵션)
+- 주입 결과가 같은 요청 ID로 저장되고 요청을 위반하며, 모델 입력에 실제 호출·관측으로 보임
+- 최소 복구 경로·삭제 후 재확정·정상 경로 재수행이 모두 성공, 복구 경로의 부분 생략과 잘못된 재확정은 실패
+- 최소 복구 호출: `violating_candidate` = horizon, `wrong_option` = h1 1, h3 2
+
+**형식과 언어**
+- JSON 중복 키, NaN/Infinity, 잘못된 자료형(`1` 대신 `true`나 `"1"`) 거부
+- 질문에 요청 ID 정확히 1회, 정답 후보·옵션·draft ID 유출 없음
+- 모든 모델 입력(시스템·사용자 메시지, 도구 정의, 주입 관측, 정답 경로의 반환값)이 ASCII 영어
+
+이 검사는 정해진 경로와 부분 경로를 확인하는 것이지, 가능한 모든 행동열을 전수 탐색한 것은 아닙니다. 영어 문장의 자연스러움은 사람이 검토해야 합니다.
+
+---
+
+## 16. 실험 실행 절차 (runbook)
+
+### 16.1 실행 순서 개요
+
+```text
+[모델 하나마다]
+서버 시작 → PID 확인 → (첫 모델만) 파일럿 → free → normal_restart → error_restart → signaled_error_restart → 서버 종료
+[모든 모델이 끝나면]
+분석 → 결과 공유
+```
+
+`run_experiment.py`는 매번 다음 순서로 진행합니다.
+
+1. 300개 task 전체 검증(`--limit`을 줘도 전체 검증)
+2. 서버 `/props` 조회 → context 8192, slot 1, chat template, build 확인
+3. 설정 잠금 파일과 비교(없으면 새로 생성)
+4. 과제와 무관한 더미 요청 2회로 워밍업(시간·토큰·메모리 지표에서 제외)
+5. 과제 실행, 한 과제가 끝날 때마다 결과 한 줄을 바로 기록
+
+### 16.2 서버 시작과 PID 확인
+
+터미널 1:
+
+```text
+llama-server -m models/Qwen3-1.7B-f16.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
+```
+
+터미널 2에서 PID를 확인합니다. 서버를 다시 시작하면 PID가 바뀝니다.
+
+```powershell
+Get-Process llama* | Select-Object Id, ProcessName      # PowerShell
+tasklist | findstr /I "llama"                           # CMD
+pgrep -af llama                                         # WSL / macOS
+```
+
+### 16.3 첫 모델에서 파일럿 (반드시 먼저)
+
+FP16으로 각 조건 몇 개만 돌려 **바닥·천장 효과**를 확인합니다.
+
+```text
+python scripts/run_experiment.py --model-label pilot-self-FP16 --condition free --horizon 5 --limit 8 --model-path models/Qwen3-1.7B-f16.gguf --server-pid <PID> --settings-lock results/pilot/settings.json --output results/pilot/fp16_free_h5.jsonl
+python scripts/run_experiment.py --model-label pilot-self-FP16 --condition error_restart --horizon 3 --limit 4 --model-path models/Qwen3-1.7B-f16.gguf --server-pid <PID> --settings-lock results/pilot/settings.json --output results/pilot/fp16_error_h3.jsonl
+python scripts/run_experiment.py --model-label pilot-self-FP16 --condition signaled_error_restart --horizon 3 --limit 4 --model-path models/Qwen3-1.7B-f16.gguf --server-pid <PID> --settings-lock results/pilot/settings.json --output results/pilot/fp16_signaled_h3.jsonl
+python scripts/analyze.py results/pilot/fp16_free_h5.jsonl results/pilot/fp16_error_h3.jsonl results/pilot/fp16_signaled_h3.jsonl
+```
+
+- `--limit 4`인 오류 조건은 오류 2종을 모두 실행하므로 결과가 8행입니다.
+- `--limit`은 데이터 순서(분야: 쇼핑 → 일정 → 이동 → 장소)대로 앞에서 자르므로, 위 명령은 쇼핑 과제만 고릅니다. 분야를 고루 보려면 `--task-id schedule_003_h5`처럼 골라 여러 번 실행합니다.
+
+| 파일럿 결과 | 판단 |
+|---|---|
+| FP16 `free` h5 성공률이 매우 낮음(예: 0~10%) | 바닥 효과. 정밀도 차이가 안 보이므로 `--max-tokens`, 서버 옵션, chat template을 먼저 점검하고 팀과 과제 난이도를 논의 |
+| FP16 `free` 전 horizon이 100% | 천장 효과 가능성. Q4까지 100%면 차이를 못 봄 |
+| `error_restart` 회복률이 거의 0이고 첫 응답에서 바로 끝냄 | 조용한 오류를 전혀 의심하지 않음. 본실험에서 `signaled_error_restart`를 주 회복 지표로 보고 |
+| `n_runtime_errors`가 0이 아님 | 서버·네트워크 문제. 해결 후 본실험 |
+| `model_output_error_count`가 많음 | 툴콜 형식 문제. 결과 JSONL의 `raw_response`를 보고 chat template·`--jinja` 확인 |
+
+파일럿 결과는 본실험과 **다른 설정 잠금·폴더**(`results/pilot/`)에 둡니다. 소수의 파일럿 결과로 결론을 내리지 않습니다.
+
+### 16.4 본실험: 모델 하나 실행
+
+PowerShell 예시입니다. `$PID`는 PowerShell 예약 변수이므로 `$serverPid`처럼 다른 이름을 씁니다.
+
+```powershell
+$label     = "self-FP16"
+$model     = "models/Qwen3-1.7B-f16.gguf"
+$serverPid = 12345                              # 16.2에서 확인한 값
+$serverCmd = "llama-server -m $model --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99"
+
+foreach ($condition in "free", "normal_restart", "error_restart", "signaled_error_restart") {
+    python scripts/run_experiment.py --model-label $label --condition $condition `
+        --model-path $model --server-pid $serverPid --kv-cache-type f16 --server-command $serverCmd `
+        --output "results/main/${label}_${condition}.jsonl"
+    if ($LASTEXITCODE -ne 0) { Write-Host "중단: $condition"; break }
+}
+```
+
+NVIDIA GPU라면 `--gpu-index 0`을 추가해 GPU 메모리를 기록합니다. 끝나면 서버를 `Ctrl+C`로 종료하고, 다음 모델 파일로 서버를 다시 띄운 뒤 `$label`, `$model`, `$serverPid`만 바꿔 같은 블록을 실행합니다.
+
+| 라벨 | 모델 파일 |
+|---|---|
+| `self-FP16` | `models/Qwen3-1.7B-f16.gguf` |
+| `self-Q8` | `models/Qwen3-1.7B-f16-Q8_0.gguf` |
+| `self-Q4` | `models/Qwen3-1.7B-f16-Q4_K_M.gguf` |
+
+**라벨 규칙.** 기준 모델 라벨에만 `FP16`이 들어가야 분석이 자동으로 기준을 찾습니다. 라벨에 양자화 이름(`Q8`, `Q4`, `Q4_K_M`, `Q6_K`)을 넣어야 파일 크기를 찾습니다.
+
+### 16.5 나눠서 실행하기
+
+한 번에 780회를 못 돌리면 나눠도 됩니다. 같은 설정 잠금을 쓰는 한 나중에 합쳐 분석할 수 있습니다.
+
+```text
+--horizon 1|3|5                      # 한 horizon만
+--error-kind violating_candidate     # 오류 분기에서 한 종류만 (기본 all)
+--task-id recovery_place_004_h3      # 과제 하나만
+--limit N                            # 선택된 과제 중 앞에서 N개
+```
+
+- 나눠 실행할 때는 파일 이름을 겹치지 않게 지정합니다. 기존 결과·진단 파일은 **절대 덮어쓰지 않고** 오류로 멈춥니다.
+- 같은 과제·조건을 두 번 실행한 결과를 함께 분석에 넣으면 "duplicate" 오류가 납니다. 재실행이 필요하면 이전 파일을 분석 입력에서 빼고, 왜 재실행했는지 기록합니다. 실패한 결과를 성공한 재실행으로 슬쩍 바꾸지 않습니다.
+
+### 16.6 설정 잠금
+
+첫 실행이 `results/experiment_settings.json`(기본 경로)에 모델과 무관한 공통 설정을 잠급니다. 추론 설정, 서버 build, chat template hash, context, slot, 기본 생성 파라미터, 장비 정보, 워밍업 정책이 들어갑니다. 이후 모든 정밀도·조건은 같은 잠금과 일치해야 실행됩니다.
+
+- 다르다는 오류가 나면 **잠금 파일을 지워 우회하지 말고** 어느 필드가 다른지(오류 메시지에 나옴) 확인해 원래 설정으로 되돌립니다.
+- 의도적으로 다른 실험(예: `--recovery-budget 6`, `--cache-prompt`, KV cache 양자화)을 할 때만 `--settings-lock results/<새시리즈>/settings.json`과 새 결과 폴더를 씁니다.
+
+### 16.7 추가 실험 시리즈 (선택)
+
+| 시리즈 | 바꾸는 것 | 목적 |
+|---|---|---|
+| 예산 민감도 | `--recovery-budget 6` | 예산이 부족해서 회복을 못 한 것인지 확인 |
+| 배포형 지연 | `--cache-prompt` | KV cache 재사용 시 실제 응답 지연 |
+| KV cache 양자화 | 서버 `--cache-type-k q8_0 --cache-type-v q8_0` (V 양자화는 `--flash-attn on`이 필요할 수 있음), 실행기 `--kv-cache-type q8_0`, 라벨 `self-Q4-kvq8` | 긴 대화에서 커지는 KV 메모리를 줄였을 때의 신뢰성 변화 |
+| 양자화 단계 확장 | `--extra-types Q6_K,Q5_K_M,Q3_K_M` 모델 | 크기 대비 성공률 곡선 |
+
+KV cache 시리즈는 먼저 기존 잠금으로 실행해 보고, 서버 설정 차이로 거부되면 오류 메시지의 차이가 KV·flash-attn 관련뿐인지 확인한 뒤 새 잠금을 씁니다. 이 경우 정밀도 비교에 `--allow-mixed-configuration`이 필요할 수 있으며, 보고서에 그 사실을 적습니다.
+
+### 16.8 메모리 측정
+
+| 상황 | 방법 | 주의 |
+|---|---|---|
+| 전체 GPU 배치, NVIDIA | `--gpu-index 0` → `peak_gpu_memory_mb` | Windows에서는 프로세스별 값이 어려워 **GPU 전체 사용량**. 측정 중 다른 GPU 프로그램 종료 |
+| CPU 실행 | `--server-pid <PID>` → `peak_server_ram_mb` (psutil 필요) | llama.cpp는 모델을 mmap하므로 RSS가 작게 보일 수 있음. 서버를 `--no-mmap`으로 띄워 측정 |
+| Intel Arc 등 내장 GPU | `nvidia-smi`가 없어 GPU 값은 `null` | 보고서에는 manifest의 모델 파일 크기 + 서버 시작 로그의 KV cache 크기를 1차 지표로 쓰고, 작업 관리자의 "공유 GPU 메모리"는 참고값으로만 |
+
+메모리 측정은 워밍업이 끝난 뒤 과제 구간에만 동작합니다. 모델을 처음 불러오는 순간의 최대값(cold start)은 별도 실험입니다. 서로 다른 장비(GPU PC와 노트북)의 시간·메모리 수치는 합치지 않습니다.
+
+---
+
+## 17. 결과 파일 구조
+
+한 번 실행하면 세 종류의 파일이 생깁니다.
+
+| 파일 | 내용 |
+|---|---|
+| `results/.../<이름>.jsonl` | 과제 하나당 한 줄. 아래 구조 |
+| `results/.../<이름>.preflight.json` | 서버 `/props` 원본, 실제 요청 설정, 워밍업 응답별 시간·토큰·상태. 실패한 준비도 기록 |
+| `results/experiment_settings.json` (또는 지정한 잠금) | 공통 설정과 그 hash |
+
+`--output`을 주지 않으면 결과는 `results/<라벨>_<조건>_<실행시각>.jsonl`에 저장됩니다.
+
+JSONL 한 줄의 구조:
+
+```text
+{
+  "metadata": { model_label, model_path, model_sha256, hostname, platform, processor, seed,
+                condition, task_selection, inference_settings, server_configuration, llama_cpp_version,
+                settings_lock_sha256, warmup, dataset_version, dataset_sha256, kv_cache_type,
+                server_command, error_kind_selection, metrics_version, agent_policy_version, ... },
+  "task":     { id, base_id, domain, horizon, query, initial_actions, success_condition,
+                error_kind, error_injection, recovery_actions, recovery_min_calls, ... },
+  "trace":    { condition, initial_messages, messages, events[...], final_state,
+                injected_actions, error_kind, error_signal, checkpoint_state_hash,
+                server_timings, termination_reason, max_calls, ... },
+  "score":    { 9절의 과제 단위 점수 }
+}
+```
+
+`trace.events`에는 응답마다 모델 원문(`raw_response`), 파싱된 행동, 도구 결과, 오류 표지, 실행 후 상태 hash, 그 시점 성공 여부가 들어갑니다. 특정 과제가 왜 실패했는지 보려면 이 배열을 읽으면 됩니다.
+
+---
+
+## 18. 분석 실행과 산출물
+
+```text
+python scripts/analyze.py results/main/self-FP16_free.jsonl results/main/self-FP16_normal_restart.jsonl ... --output results/main/summary.json --csv-output results/main/summary.csv --plot-dir results/main/plots
+```
+
+PowerShell에서는 와일드카드를 직접 넘기지 못하므로 파일 목록을 펼쳐서 넘깁니다.
+
+```powershell
+python scripts/analyze.py (Get-ChildItem results/main/*.jsonl).FullName --output results/main/summary.json --csv-output results/main/summary.csv --plot-dir results/main/plots
+```
+
+- 여러 모델 결과를 한 번에 넣으면 정밀도 비교까지 계산합니다. 기준은 라벨에 `FP16`이 들어간 유일한 라벨이고, 아니면 `--reference-label self-FP16`처럼 지정합니다.
+- 같은 라벨·프로토콜 안에 다른 장비·설정이 섞이면 분석을 중단합니다. 장비가 다르면 라벨을 구분해 따로 분석합니다.
+
+### 산출물
+
+| 파일 | 내용 |
+|---|---|
+| `summary.json` | 아래 전부 |
+| `summary.csv` | `condition_summaries` 요약표 |
+| `summary_paired.csv` | `recovery_comparison` 짝 비교 |
+| `summary_precision.csv` | `success_differences` |
+| `summary_interaction.csv` | `horizon_interactions` (핵심 가설) |
+| `summary_penalty.csv` | `recovery_penalty_differences` |
+| `plots/*.png` | 아래 그래프(matplotlib 필요) |
+
+`summary.json`의 최상위 키: `condition_summaries`, `recovery_comparison`, `recovery_pairing`(짝 진단: 짝 없는 기록, 제외된 쌍, 누락 metadata), `precision_comparison`.
+
+### 그래프 (x축은 모두 horizon, 선은 모델)
+
+| 파일 | 지표 |
+|---|---|
+| `success_rate_free_by_horizon.png` | `free` 성공률 |
+| `natural_error_rate_free_by_horizon.png` | 자연 오류율 |
+| `error_turn_rate_free_by_horizon.png`, `tool_action_error_rate_free_by_horizon.png` | 응답당·실행 호출당 오류율 |
+| `wrong_save_recovery_free_by_horizon.png` | `free`에서 스스로 고친 비율 |
+| `normal_restart_success_by_horizon.png`, `next_action_accuracy_normal_by_horizon.png` | 정상 재개 기준점 |
+| `recovery_rate_by_horizon.png` | 조용한 오류 회복률(오류 종류별 선, `wrong_option`은 점선) |
+| `signaled_recovery_rate_by_horizon.png` | 신호 있는 오류 회복률 |
+| `error_turn_rate_recovery_by_horizon.png` | 회복 중 오류율 |
+| `elapsed_ms_successful_free_by_horizon.png`, `ms_per_turn_free_by_horizon.png` | 시간 |
+| `generation_tps_free_by_horizon.png`, `prompt_tps_free_by_horizon.png` | 토큰/초 |
+| `server_ram_free_by_horizon.png`, `gpu_memory_free_by_horizon.png` | 메모리 |
+
+값이 수집되지 않은 지표의 그래프는 만들지 않습니다.
+
+---
+
+## 19. 결과 해석과 보고서 작성 가이드
+
+### 결과 표 구성 예
+
+| 표 | 행 | 열 |
+|---|---|---|
+| 표 1 효율 | FP16/Q8/Q4 | 파일 크기, 토큰/초(prompt·생성), 턴당 지연, 메모리 |
+| 표 2 실행 | 정밀도 × horizon | `free` 성공률, 자연 오류율, ID 복사 오류율, 선택 오류율, 첫 오류 단계 분포 |
+| 표 3 증폭 | 정밀도 | `horizon_interactions`의 (1,5) interaction, 95% CI, Holm p |
+| 표 4 회복 | 정밀도 × horizon × 오류 종류 | 정상 성공률, 조용한 오류 회복률, 신호 있는 오류 회복률, 회복 손실, `immediate_finish_rate` |
+| 그림 | 파일 크기(x) vs 성공률(y) | trade-off 곡선 (추가 양자화 단계가 있으면 점이 늘어남) |
+
+### 이렇게 쓰고, 이렇게 쓰지 않습니다
+
+| 써도 되는 표현 | 쓰면 안 되는 표현 |
+|---|---|
+| "올바른 정보가 주어진 지점에서 남은 단계가 많을수록 Q4의 손실이 X%p 더 컸다" | "Q4는 5-step 과제에서 X% 더 나쁘다"(시작 정보량도 다름) |
+| "h3→h5 차이는 대화 길이와 ID 전달 증가의 효과" | "h5는 추론 단계가 더 많다" |
+| "통제된 4개 분야, 5단계 템플릿, 2가지 저장 오류에 대한 결과" | "양자화 Agent 일반에 대해" |
+| "유의한 차이를 찾지 못했다(95% CI [a, b])" | "차이가 없다" |
+| "60개 기본 시나리오(짝지은 관측)" | "180개 독립 표본" |
+| "Q4는 Q4_K_M(일부 텐서는 더 높은 정밀도를 쓰는 혼합 양자화)" | "4비트 모델" |
+
+### 오류 발생과 회복을 연결해 읽기
+
+- `free`의 `wrong_save_recovery_rate`(스스로 낸 실수를 고친 비율)와 `error_restart:violating_candidate`의 회복률(주입된 같은 실수를 고친 비율)을 나란히 놓으면, 주입 실험이 자연 상황을 얼마나 반영하는지 볼 수 있습니다.
+- `free` 성공률에서 회복 성공률을 빼는 식의 비교는 하지 않습니다. 회복 손실은 반드시 같은 fixture의 `normal_restart`와 짝지어 계산합니다.
+- `recovery_error_resolved`는 true인데 `recovery_success`가 false면 "잘못된 결과를 지우기만 하고 정답을 저장하지 않은" 경우입니다.
+- `error_restart`와 `signaled_error_restart`의 회복률 차이는 "오류를 발견하는 능력"과 "발견한 뒤 고치는 능력"을 나눠 보여줍니다. 신호가 있어도 못 고치면 발견이 아니라 수정 단계가 문제입니다.
+
+### 교수 요구사항(수치·trade-off 결론)과의 연결
+
+결론은 "Q4는 모델 크기를 X% 줄이고 생성 속도를 Y배 높였지만, 남은 단계가 4개 늘 때 성공률 손실이 Z%p 커지고 조용한 오류 회복률은 W%p 낮았다" 형태로 수치와 trade-off를 함께 씁니다.
+
+---
+
+## 20. 팀 협업과 결과 공유
+
+**가장 중요한 규칙: 한 정밀도 비교에 들어가는 모든 모델은 같은 PC에서, 같은 llama.cpp 빌드와 같은 설정 잠금으로 실행합니다.** 팀원이 나눠 맡을 때는 "정밀도별로" 나누지 말고 "PC 하나가 모든 정밀도를 실행"하는 방식으로 나눕니다(예: A는 노트북에서 FP16·Q8·Q4 전체, B는 GPU PC에서 FP16·Q8·Q4 전체). 서로 다른 PC 결과는 장비별로 따로 분석하고, 같은 방향인지 비교합니다.
+
+GitHub에는 코드·task·manifest만 올립니다. 결과는 팀 Google Drive에 다음 구조로 올립니다.
+
+```text
+<날짜>_<장비명>_<시리즈>/            예: 20261020_laptop-arc_main
+├─ *.jsonl                         모든 조건의 결과
+├─ *.preflight.json
+├─ settings.json                   설정 잠금 파일
+├─ summary.json, summary*.csv, plots/
+├─ manifest.json                   models/manifest.json 사본
+├─ server_logs/                    각 정밀도의 서버 시작 로그
+└─ run_info.txt                    OS, CPU/GPU, RAM, VRAM, llama.cpp 버전, 서버 명령, 실행 날짜, 특이사항
+```
+
+`results/`는 `.gitignore`에 있으므로 `git add .`를 해도 올라가지 않습니다.
+
+---
+
+## 21. 데이터셋 수정 방법
+
+`tasks/tasks.json`과 두 카탈로그는 **생성된 파일**입니다. 직접 고치면 실행 전 검증에서 "생성기 원본과 다르다"며 멈춥니다.
+
+| 바꾸려는 것 | 수정할 곳 |
+|---|---|
+| 시나리오 수, 데이터 버전, horizon, 오류 종류 목록 | `src/dataset_spec.py` |
+| 시나리오 내용(상품·일정·노선·장소 표, 조건, 순위 규칙, 함정 패턴, 위치 배치) | `scripts/build_execution_tasks.py` |
+| 회복 오류 설계, 복구 경로, 카탈로그 문구 | `scripts/build_recovery_tasks.py` |
+| 감사 메시지, 시스템 프롬프트 뒷부분 | `src/execution_environment.py` (`SIGNALED_ERROR_MESSAGE`, `AGENT_INSTRUCTIONS`) |
+| 시스템 프롬프트 앞부분 | `src/environment.py` (`SYSTEM_PROMPT`) |
+
+수정한 뒤:
 
 ```text
 python scripts/build_tasks.py --write
 python scripts/validate_tasks.py
 python -m unittest discover -s tests -v
-```
-
-`--write`는 생성한 100개를 메모리에서 검증한 뒤 JSON과 두 카탈로그를 함께 갱신합니다. JSON만 직접 바꾸면 생성기 원본과 다르다는 이유로 실험이 중단됩니다. 연구 조건이 바뀌면 데이터 버전을 갱신하고 결과를 구분해 보관합니다.
-
-### 2. llama.cpp 준비
-
-새 PC에서 `llama`와 `llama-quantize` 명령이 인식되어야 합니다.
-
-```text
-llama version
-llama-quantize --help
-```
-
-GPU PC에서는 CUDA가 활성화된 llama.cpp 빌드 또는 CUDA 지원 배포본을 사용합니다. FP16·Q8·Q4를 모두 같은 GPU PC에서 실행해야 실행 시간과 메모리를 공정하게 비교할 수 있습니다. `llama` 명령 대신 `llama-server`를 사용하는 배포본이라면 README의 서버 명령에서 실행 파일 이름만 해당 이름으로 바꿉니다.
-
-#### Windows NVIDIA GPU: 사전 빌드 바이너리 사용(권장)
-
-1. NVIDIA 드라이버가 설치되어 있는지 확인합니다.
-
-```cmd
-nvidia-smi
-```
-
-2. [llama.cpp 공식 Releases](https://github.com/ggml-org/llama.cpp/releases)에서 PC에 맞는 **Windows x64 CUDA** 패키지를 다운로드합니다. NVIDIA GPU라면 CUDA 12 패키지를 우선 사용하고, 릴리스 설명에 표시된 CUDA DLL을 함께 보관합니다.
-3. 압축을 예를 들어 `C:\tools\llama-cuda`에 풉니다.
-4. 압축을 푼 폴더에서 다음 파일이 있는지 확인합니다. 릴리스에 따라 이름이 `llama.exe` 또는 `llama-server.exe`일 수 있습니다.
-
-```cmd
-llama-server.exe --version
-llama-quantize.exe --help
-```
-
-5. 매번 전체 경로를 쓰지 않으려면 해당 폴더를 PATH에 추가합니다. PATH를 수정하지 않는 경우에는 아래 명령에서 실행 파일의 전체 경로를 사용합니다.
-
-```cmd
-set PATH=%PATH%;C:\tools\llama-cuda
-llama-server.exe --version
-```
-
-#### Windows에서 소스 빌드
-
-사전 빌드 패키지를 사용할 수 없을 때만 다음 방법을 사용합니다. 공식 빌드 문서의 CUDA 옵션은 `GGML_CUDA=ON`입니다.
-
-```cmd
-git clone https://github.com/ggml-org/llama.cpp.git C:\tools\llama.cpp
-cd /d C:\tools\llama.cpp
-cmake -B build -DGGML_CUDA=ON
-cmake --build build --config Release
-```
-
-빌드 후 실행 파일은 보통 `build\bin\Release\` 아래에 있습니다. 이 경로의 `llama-server.exe`, `llama-quantize.exe`를 사용하고, `llama` 통합 명령이 없다면 `quantize_models.py`에 `--llama`와 `--quantizer` 전체 경로를 전달합니다.
-
-공식 서버 문서와 CUDA 빌드 참고:
-
-- [llama.cpp server 사용법](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
-- [llama.cpp CUDA 빌드 문서](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)
-
-### 3. 모델 준비
-
-모델은 GitHub에서 복제하지 않습니다. 새 PC에서 다음 중 하나를 수행합니다.
-
-1. 원본 FP16/BF16 GGUF를 받은 뒤 `quantize_models.py`로 self-Q8·self-Q4를 생성합니다.
-2. 비교용 reference Q8·Q4는 `llama serve -hf`로 자동 다운로드합니다.
-
-직접 양자화한 파일에는 `self-` 접두사를 사용하고, 제공처에서 미리 받은 파일에는 `reference-` 접두사를 사용하면 결과 파일을 쉽게 구분할 수 있습니다.
-
-```text
-self-FP16      = 원본 GGUF
-self-Q8        = 같은 원본에서 직접 생성한 Q8_0
-self-Q4        = 같은 원본에서 직접 생성한 Q4_K_M
-reference-Q8   = 제공처에서 미리 양자화한 Q8_0
-reference-Q4   = 제공처에서 미리 양자화한 Q4_K_M
-```
-
-모델 파일의 실제 경로와 SHA-256 hash는 `models/manifest.json`에 기록합니다. 모델을 별도 경로에 보관하는 경우에도 실행 시 `--model-path`를 지정하면 결과 로그에 모델 hash를 남길 수 있습니다.
-
-#### 원본 FP16 GGUF를 models에 저장
-
-원본은 [ggml-org/Qwen3-1.7B-GGUF의 Qwen3-1.7B-f16.gguf](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/blob/main/Qwen3-1.7B-f16.gguf)를 사용합니다. 파일 크기가 약 4GB이므로 충분한 디스크 공간을 확보합니다.
-
-Windows CMD:
-
-```cmd
-curl.exe -L -o models\Qwen3-1.7B-f16.gguf "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-f16.gguf"
-```
-
-WSL / Linux / macOS:
-
-```bash
-curl -L -o models/Qwen3-1.7B-f16.gguf "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-f16.gguf"
-```
-
-다운로드 뒤 다음처럼 직접 Q8과 Q4를 생성합니다.
-
-```cmd
-python scripts\quantize_models.py --source "models\Qwen3-1.7B-f16.gguf" --output-dir models
-```
-
-생성 결과는 모두 로컬 `models/`에 보관합니다.
-
-```text
-models/
-├─ Qwen3-1.7B-f16.gguf
-├─ Qwen3-1.7B-f16-Q8_0.gguf
-├─ Qwen3-1.7B-f16-Q4_K_M.gguf
-└─ manifest.json
-```
-
-#### reference Q8/Q4 준비
-
-reference 모델은 같은 공식 저장소에서 자동으로 받을 수 있습니다. 아래 명령은 한 번에 하나씩 실행하며, 첫 번째 서버를 `Ctrl+C`로 종료한 뒤 다음 모델을 실행합니다. 처음 실행할 때 모델이 로컬 cache에 다운로드됩니다.
-
-```cmd
-llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q8_0 --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
-llama serve -hf ggml-org/Qwen3-1.7B-GGUF:Q4_K_M --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
-```
-
-reference 모델도 hash와 파일 크기를 manifest에 남길 경우, 다운로드된 `.gguf` 파일의 실제 경로를 확인해 `quantize_models.py`의 `--reference-q8`, `--reference-q4` 옵션으로 기록합니다. reference 모델과 cache도 GitHub에는 올리지 않습니다.
-
-### 4. GPU PC에서 본 실험 실행
-
-서버는 한 번에 한 모델만 실행합니다. 실행 스크립트가 실제 task 전에 별도 더미 요청 2회로 워밍업하고, 이를 과제 시간·토큰·메모리 지표에서 제외합니다. 첫 번째 실제 task를 버리는 방식이 아닙니다. 서버를 종료하려면 서버 터미널에서 `Ctrl+C`를 누릅니다.
-
-```text
-llama serve -m models/Qwen3-1.7B-f16.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
-```
-
-다른 터미널에서 먼저 1개 task로 확인합니다.
-
-```text
-python scripts/run_experiment.py --model-label self-FP16 --condition free --model-path models/Qwen3-1.7B-f16.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --timeout-seconds 120 --warmup-requests 2 --expected-context-size 8192 --limit 1
-```
-
-정상이면 `--limit 1`을 제거해 60개 execution task를 실행합니다. 이후 서버를 종료하고 같은 방식으로 self-Q8, self-Q4, reference-Q8, reference-Q4를 실행합니다. 모든 모델에서 prompt, tool schema, seed, temperature, context size, Agent loop, llama.cpp 버전을 동일하게 유지합니다.
-
-#### 서버 PID와 peak RAM 측정
-
-서버를 새로 시작할 때마다 PID가 바뀝니다. 반드시 현재 실행 중인 서버의 PID를 다시 확인합니다.
-
-Windows CMD:
-
-```cmd
-tasklist | findstr /I "llama"
-```
-
-WSL / Linux / macOS:
-
-```bash
-pgrep -af llama
-```
-
-예를 들어 현재 PID가 `32356`이면 `--server-pid 32356`을 추가합니다. 다음에 서버를 재시작하면 숫자를 새 PID로 바꿉니다.
-
-```cmd
-python scripts\run_experiment.py --model-label self-Q8 --condition free --model-path "models\Qwen3-1.7B-f16-Q8_0.gguf" --base-url http://127.0.0.1:18080 --server-pid 32356 --limit 1
-```
-
-`mean_peak_server_ram_mb`가 모델 서버의 peak RAM이고, `mean_max_ram_mb`는 Python 실행기의 RAM입니다. 서버 PID를 생략하면 서버 RAM 값은 `null`로 남습니다.
-
-GPU에서 실행하면(`--n-gpu-layers 99`) 가중치가 VRAM에 올라가므로 서버 RAM으로는 모델 메모리를 비교할 수 없습니다. 이때는 `--gpu-index 0`을 추가해 `nvidia-smi`로 GPU 메모리 사용량을 과제마다 샘플링합니다. 결과는 `peak_gpu_memory_mb`, 요약표의 `mean_peak_gpu_memory_mb`입니다. Windows에서는 프로세스별 VRAM을 얻기 어려워 **GPU 전체 사용량**을 기록하므로, 측정 중에는 다른 GPU 프로그램을 끕니다.
-
-```cmd
-python scripts\run_experiment.py --model-label self-Q8 --condition free --model-path "models\Qwen3-1.7B-f16-Q8_0.gguf" --base-url http://127.0.0.1:18080 --server-pid 32356 --gpu-index 0 --limit 1
-```
-
-GPU와 CPU는 실행 시간·메모리가 다르므로 서로의 효율성 수치를 직접 합치지 않습니다. 팀원이 여러 PC에서 실행한다면 결과 로그의 장비 정보와 `device_label`을 보존하고, 성공률·오류율과 효율성 지표를 각각 해석합니다.
-
-### 5. 팀원이 공유해야 하는 파일
-
-GitHub에는 다음 파일을 공유합니다.
-
-```text
-README.md
-requirements.txt
-src/
-scripts/
-tasks/tasks.json
-models/manifest.json
-```
-
-다음 항목은 각 PC에만 보관합니다.
-
-```text
-models/*.gguf
-.venv/
-logs/
-results/
-```
-
-실험 결과는 GitHub가 아니라 팀 Google Drive의 공유 폴더에 올립니다. `results/`는 `.gitignore`에 포함되어 있으므로 `git add .`를 해도 GitHub에 업로드되지 않습니다.
-
-모델별로 다음 명령을 실행해 요약표와 그래프를 만듭니다. 회복 비교에는 `normal_restart`와 `error_restart` 결과가 모두 필요합니다.
-
-```cmd
-python scripts\analyze.py results\self-Q8_free_실행시각.jsonl results\self-Q8_normal_restart_실행시각.jsonl results\self-Q8_error_restart_실행시각.jsonl --output results\self-Q8_summary.json --csv-output results\self-Q8_summary.csv --plot-dir results\self-Q8_plots
-```
-
-정밀도 간 비교는 세 모델의 결과 파일을 한 번에 넣습니다. FP16이 들어간 라벨이 하나면 자동으로 기준이 되고, 아니면 `--reference-label`로 지정합니다.
-
-```cmd
-python scripts\analyze.py results\self-FP16_*.jsonl results\self-Q8_*.jsonl results\self-Q4_*.jsonl --reference-label self-FP16 --output results\precision_summary.json --csv-output results\precision_summary.csv
-```
-
-`precision_comparison.success_differences`에는 조건·horizon별로 같은 과제끼리 짝지은 성공률 차이(모델 − 기준), bootstrap 95% 신뢰구간, 정확 McNemar p값이 들어갑니다. `recovery_penalty_differences`는 회복 손실이 양자화 모델에서 더 커지는지(정밀도 × 조건 상호작용)를 같은 방식으로 비교합니다. 칸당 짝은 최대 20개이고 다중 비교 보정은 하지 않으므로 탐색적 결과로 보고합니다. CSV를 지정하면 `<이름>_precision.csv`도 함께 저장됩니다.
-
-Google Drive에는 다음 파일을 함께 올립니다.
-
-```text
-<날짜>_<장비명>_<모델명>/
-├─ execution 결과 JSONL
-├─ recovery 결과 JSONL
-├─ summary.json
-├─ summary.csv
-├─ plots/
-├─ models/manifest.json 사본
-└─ run_info.txt  (OS, CPU/GPU, RAM, VRAM, llama.cpp 버전, 서버 PID)
-```
-
-예시 폴더명은 `20261015_rtx4070_self-Q8`입니다. 모델 파일 자체는 용량이 크므로 Google Drive에도 필요할 때만 별도 공유하고, 결과 폴더에는 보통 hash와 manifest만 포함합니다.
-
-## 1. 프로젝트 폴더로 이동
-
-### Windows CMD
-
-```cmd
-cd /d "%USERPROFILE%\Desktop\ondevice"
-```
-
-### Windows PowerShell
-
-```powershell
-Set-Location "$env:USERPROFILE\Desktop\ondevice"
-```
-
-### WSL
-
-Windows의 사용자 폴더 아래 `Desktop\ondevice`를 WSL에서 사용할 때는 다음처럼 이동합니다. `<WindowsUser>`는 본인의 Windows 사용자 이름으로 바꿉니다.
-
-```bash
-cd "/mnt/c/Users/<WindowsUser>/Desktop/ondevice"
-```
-
-### macOS
-
-프로젝트를 저장한 실제 경로로 이동합니다.
-
-```bash
-cd ~/Desktop/ondevice
-```
-
-## 2. 가상환경 만들기
-
-이미 `.venv`가 있다면 이 단계는 건너뛰어도 됩니다.
-
-### Windows CMD
-
-```cmd
-py -3 -m venv .venv
-.venv\Scripts\activate
-```
-
-### Windows PowerShell
-
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### WSL / macOS
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-가상환경이 활성화되면 명령줄 앞에 `(.venv)`가 표시됩니다.
-
-## 3. 패키지 설치
-
-현재 핵심 기능은 Python 표준 라이브러리만 사용합니다.
-
-```text
-python -m pip install -r requirements.txt
-```
-
-최대 RAM 측정이 필요하면 선택적으로 `psutil`을 설치합니다.
-
-```text
-python -m pip install "psutil>=6.0,<8.0"
-```
-
-서버 PID 확인과 `--server-pid`·`--gpu-index` 사용법은 위의 "서버 PID와 peak RAM 측정"을 따릅니다. 결과에는 다음 메모리 값이 별도로 기록됩니다.
-
-- `max_ram_mb`: Python 실행기의 task 종료 시점 RSS
-- `peak_server_ram_mb`: task 실행 중 llama 서버 프로세스에서 관측한 최대 RSS
-- `peak_gpu_memory_mb`: `--gpu-index`를 준 경우 task 실행 중 관측한 GPU 전체 메모리 사용량의 최대값
-
-`mean_peak_server_ram_mb`를 모델별로 비교용 peak RAM 지표로 사용합니다. `--ram-sample-interval-ms`로 측정 간격을 바꿀 수 있으며 기본값은 100ms입니다.
-
-분석 결과를 CSV와 PNG 그래프로 저장하려면 선택적으로 matplotlib를 설치합니다.
-
-```text
-python -m pip install "matplotlib>=3.8,<4.0"
-```
-
-분석 예시는 다음과 같습니다.
-
-```text
-python scripts\analyze.py results\self-Q8_free_실행시각.jsonl --csv-output results\summary.csv --plot-dir results\plots
-```
-
-`--plot-dir`를 지정하면 horizon별 성공률·자연 오류율·응답별/실제 도구 호출별 오류율·회복률·다음 행동 정확도·잘못 저장 후 자기 회복률·실행 시간·peak server RAM·GPU 메모리 그래프가 생성됩니다. 값이 수집되지 않은 지표의 그림은 만들지 않습니다. 모델 저장공간은 `models/manifest.json`에서 읽어 `model_storage_mb`로 요약표에 추가됩니다.
-
-## 4. 모델 없이 smoke test 실행
-
-실제 모델이나 llama.cpp 서버 없이 Agent 흐름을 확인하는 단계입니다.
-
-### Windows CMD / PowerShell
-
-```text
-python scripts\smoke_test.py
-```
-
-### WSL / macOS
-
-```bash
 python scripts/smoke_test.py
 ```
 
-정상 실행되면 다음 메시지가 출력됩니다.
+`--write`는 생성 결과를 메모리에서 먼저 검증하고 통과할 때만 파일을 바꿉니다. 모델 입력이 바뀌는 수정이면 `DATASET_VERSION`을 올리고, 이전 결과와 섞지 않습니다. 시나리오 수를 바꾸면 생성기의 표(분야마다 행 수 = `SCENARIOS_PER_DOMAIN`)도 함께 맞춰야 합니다.
 
-```text
-SMOKE TEST PASSED
-```
+---
 
-이 테스트는 다음을 확인합니다.
+## 22. 문제 해결 FAQ
 
-- task 로딩
-- 정상 checkpoint 생성
-- 오류 상태 주입
-- Agent tool call 실행
-- 최종 상태 채점
-- free·normal_restart·error_restart 조건
-- 새 execution 60개 전체의 정답 실행과 필수 호출 수
-- 회복 40개 × 정상/오류 두 분기의 정답 실행과 추가 비용 지표
-
-## 모델 생성 및 manifest 기록
-
-직접 양자화 실험은 이미 만들어진 Q8·Q4 파일을 내려받는 방식이 아니라, 하나의 양자화되지 않은 FP16/BF16 GGUF에서 Q8과 Q4를 각각 생성하는 방식입니다.
-
-```text
-원본 FP16/BF16 GGUF
-       ├─ llama-quantize → Q8_0
-       └─ llama-quantize → Q4_K_M
-```
-
-Windows CMD / PowerShell:
-
-```cmd
-python scripts\quantize_models.py --source "C:\path\to\qwen3-1.7b-f16.gguf" --output-dir models
-```
-
-WSL / macOS:
-
-```bash
-python scripts/quantize_models.py --source /path/to/qwen3-1.7b-f16.gguf --output-dir models
-```
-
-실행하면 다음 파일이 생성됩니다.
-
-```text
-models/
-├─ qwen3-1.7b-f16-Q8_0.gguf
-├─ qwen3-1.7b-f16-Q4_K_M.gguf
-└─ manifest.json
-```
-
-`manifest.json`에는 원본·생성 모델의 경로, 파일 크기, SHA-256 hash, quantization type, 양자화 명령어, llama.cpp 버전이 기록됩니다. 비교용 공식 Q8·Q4 파일이 있다면 다음 옵션으로 함께 기록할 수 있습니다.
-
-```text
---reference-q8 "C:\path\to\official-q8.gguf" --reference-q4 "C:\path\to\official-q4.gguf"
-```
-
-`--source`는 반드시 양자화되지 않은 GGUF여야 합니다. Hugging Face의 safetensors 원본만 가지고 있다면, 먼저 llama.cpp의 Hugging Face→GGUF 변환 도구로 F16/BF16 GGUF를 만든 뒤 이 스크립트를 실행합니다. Q8 파일을 다시 Q4로 바꾸지 않는 것이 중요합니다.
-
-## 직접 양자화 모델과 공식 모델의 비교
-
-주 비교는 이 저장소의 동일한 `execution` task 60개로 진행합니다. 같은 task, prompt, tool schema, seed, temperature, context size, llama.cpp 버전을 FP16·직접 생성 Q8·직접 생성 Q4·공식 Q8·공식 Q4에 동일하게 적용합니다.
-
-이 비교는 양자화 방식 또는 변환 경로가 결과에 영향을 주는지 확인하기 위한 대조 실험입니다. 공식 Q8·Q4가 다른 체크포인트나 다른 quantization type에서 만들어졌다면, 같은 정밀도의 순수 비교가 아니므로 manifest에 출처 차이를 남기고 결과를 별도로 해석해야 합니다.
-
-BFCL은 주 실험을 대체하지 않고 외부 검증용으로 추가하는 편이 적절합니다. 이 프로젝트의 핵심 질문은 horizon별 오류 위치와 회복 과정까지 통제하는 것이므로, 먼저 자체 execution/recovery task로 비교한 다음 BFCL을 통해 일반적인 tool-calling 성능이 같은 방향으로 나타나는지 확인합니다.
-
-## 5. llama.cpp 서버 실행
-
-Ollama를 사용하지 않고 `llama.cpp`의 서버를 직접 사용합니다. 서버는 별도의 터미널에서 계속 실행해 둡니다.
-
-```text
-llama serve -m models/Qwen3-1.7B-f16-Q8_0.gguf --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
-```
-
-Windows, WSL, macOS에서 명령어 형식은 동일합니다. `llama` 명령이 인식되지 않으면 llama.cpp가 설치된 경로를 사용하거나 `llama-server` 실행 파일 경로를 확인해야 합니다.
-
-GPU 예시의 `--n-gpu-layers 99`는 가능한 전체 레이어의 GPU 배치를 요청합니다. **FP16까지 같은 배치로 실행할 여유가 있는 장비**를 사용하고 서버 시작 로그에서 실제 배치를 확인합니다. 메모리가 부족하면 세 정밀도 모두 같은 고정 레이어 수로 바꾸거나 더 큰 장비를 사용합니다. CPU 실험은 세 모델 모두 `--n-gpu-layers 0`으로 실행하고 GPU 결과와 분리합니다. 스레드 수 등 추가 실행 옵션도 세 모델에서 동일하게 유지하며, 사용한 서버 명령과 시작 로그를 함께 보관합니다. `--flash-attn off`와 KV cache F16도 이번 비교를 위한 공통 선택이지 최적 속도 설정이라는 뜻은 아닙니다.
-
-### 공통 추론 설정과 자동 워밍업
-
-| 항목 | 기본값 / 정책 |
+| 증상 | 원인과 해결 |
 |---|---|
-| temperature / seed | `0.0` / `42` |
-| 한 응답의 최대 생성 토큰 / 통신 제한 | `512` / `120초` |
-| thinking | 요청마다 `enable_thinking=false`, `reasoning_effort=none` |
-| 도구 호출 | 한 응답에 하나, `parallel_tool_calls=false` |
-| 샘플러 | `temperature`만 활성화; top-k·top-p·min-p·패널티는 중립값을 명시 |
-| prompt cache 재사용 | `cache_prompt=false` (매 응답에서 재사용하지 않는 측정 조건) |
-| context / 동시 처리 slot | 서버가 보고한 `8192` / `1`을 요구 |
-| 워밍업 | 실행 명령마다 독립 더미 요청 `2회`, 실제 task 정보 미사용 |
+| `server context size must be 8192; observed ...` | 서버를 `--ctx-size 8192`로 띄우지 않음. 다른 값을 쓰려면 모든 실행에 `--expected-context-size`를 같은 값으로 주고 새 잠금 사용 |
+| `server total_slots must be 1` | 서버에 `--parallel 1` 추가 |
+| `/props is missing ...` | 너무 오래된 llama.cpp. 팀 공통 최신 빌드로 맞춤 |
+| `settings differ from the existing lock (...)` | 괄호 안 필드가 달라짐(빌드, template, 장비, 추론 설정 등). 잠금을 지우지 말고 원래대로 되돌리거나 새 시리즈로 분리 |
+| `Output/preflight report already exists` | 같은 이름의 결과가 있음. `--output`을 새 이름으로 |
+| `could not reach llama-server` | 서버가 꺼졌거나 포트가 다름. `--base-url` 확인 |
+| `No tasks match --task-type, --horizon and --task-id` | 회복 조건에 `--horizon 5`를 줬거나 ID 접두사(`recovery_`)가 틀림 |
+| 결과에 `n_runtime_errors`가 많음 | 타임아웃(`--timeout-seconds` 늘림), 서버 메모리 부족, 서버 재시작 여부 확인 후 해당 과제 재수집 |
+| `model_output_error_count`가 많고 `unparsed_tool_call`이 대부분 | 서버가 툴콜을 파싱하지 못함. `--jinja` 사용 여부, 빌드의 Qwen3 tool-call 지원 확인. 정밀도 간 형식 오류 차이 자체도 결과로 보고 |
+| `server_output_parse_failure` | 서버가 모델 출력 파싱 중 500을 냄. 모델 행동으로 집계되며 정상 동작임 |
+| `peak_server_ram_mb`가 `null` | psutil 미설치, `--server-pid` 누락, 또는 PID가 바뀜 |
+| `peak_gpu_memory_mb`가 `null` | `--gpu-index` 누락, 또는 NVIDIA가 아님(Intel/AMD는 정상적으로 null) |
+| 분석에서 `Compared results come from different machines/settings/datasets` | 다른 PC나 다른 잠금의 결과가 섞임. 장비별로 나눠 분석 |
+| 분석에서 `duplicate ... record` | 같은 과제·조건을 두 번 넣음. 재실행 전 파일을 입력에서 제외 |
+| `model_storage_mb`가 비어 있음 | 라벨에 양자화 이름이 없거나 manifest에 그 파일이 없음 |
+| PowerShell에서 `$pid` 관련 오류 | `$PID`는 예약 변수. `$serverPid` 사용 |
+| 그래프가 안 생김 | `python -m pip install matplotlib` |
 
-temperature·seed·토큰 상한·timeout·워밍업 횟수·기대 context 크기는 실행 인자로 받을 수 있습니다. 기본값을 바꿀 때는 모든 정밀도와 조건에서 동일하게 바꾸고 **별도 실험 시리즈**로 저장합니다. 무작위 seed 값, NaN/무한대, 0회 워밍업 등 잘못된 설정은 서버 요청 전에 거절합니다. Greedy decoding은 비교를 위한 선택이며 Qwen의 최적 정확도 설정이거나 장비 간 완전히 같은 출력을 보장한다는 뜻은 아닙니다.
+---
 
-실행 순서는 `전체 task 검증 → 서버 /props 조회 → 공통 설정 확인 → 더미 워밍업 → 실제 task 측정`입니다. 워밍업의 응답 내용이 틀리거나 모델 출력 형식 오류가 있어도 약한 정밀도 조건을 선택적으로 제외하지 않습니다. 그런 응답은 별도 진단에 기록하고 진행하며, 연결 실패·서버 장애는 실제 task를 시작하기 전에 중단합니다. 더미 요청 2회가 모든 길이의 계산 준비나 열적 안정성을 완전히 보장하는 것은 아닙니다.
+## 23. 변경 이력
 
-RAM 측정기는 워밍업이 끝난 뒤 과제 실행 구간에만 동작합니다. 워밍업 중의 메모리 최고값은 측정하지 않지만, 워밍업 이후 상주하는 모델·실행기 메모리는 과제 구간의 RAM에 포함됩니다. 모델을 처음 불러오는 순간의 cold-start peak를 측정하는 실험과는 구분합니다.
+이전 버전(한국어 파일럿, `workflow-en-v1`~`v3`)의 결과는 새 버전과 합치지 않습니다. 모델 파일은 그대로 써도 되지만 결과는 새로 수집합니다.
 
-첫 정상 준비가 끝나면 `results/experiment_settings.json`에 모델과 무관한 공통 설정을 잠급니다. 이후 FP16·Q8·Q4와 세 조건은 이 파일을 함께 사용하며 요청 설정·서버 버전·chat template·context·slot·장비 정보·워밍업 정책이 다르면 중단합니다. 모델 경로·정밀도 자체는 비교 대상이므로 잠금 비교에서 제외합니다. 설정이 다르다는 오류가 나면 기존 파일을 지워 우회하지 말고 원래 설정을 확인합니다. 의도적인 새 실험에는 `--settings-lock results/new_series_settings.json`처럼 새 경로와 결과 폴더를 사용합니다.
+### workflow-en-v4 (현재)
 
-각 실행에는 결과 JSONL과 같은 이름의 `.preflight.json` 진단 파일도 생깁니다. 예를 들어 `run.jsonl`이면 `run.preflight.json`이며, 원본 `/props`, 실제 요청 설정, 워밍업 응답별 시간·토큰·상태를 담습니다. 과제 로그의 metadata에는 설정·버전·잠금 hash와 워밍업 진단을 남기지만, 워밍업은 task 행·과제 지표에 포함하지 않습니다. 실패한 준비도 진단을 남기고, 기존 결과·잠금·진단 파일은 덮어쓰지 않습니다. 결과 공유 시 JSONL·preflight·설정 잠금 파일을 함께 드라이브에 올립니다.
+| # | 문제 | 수정 |
+|---|---|---|
+| 1 | 시스템 프롬프트가 존재하지 않는 `finish` 도구를 지시 | "finish 도구 없음, 도구 호출 없는 답이 종료"로 수정 |
+| 2 | 파싱되지 않은 툴콜 텍스트가 정상 종료로 처리되어 형식 실패가 판단 실패로 둔갑 | `unparsed_tool_call` 형식 오류로 분류 |
+| 3 | 서버의 모델 출력 파싱 실패(HTTP 500)가 인프라 장애로 분모에서 제외 | `server_output_parse_failure` 모델 출력 오류로 분류 |
+| 4 | `"rating": 4.1000000000000005` 같은 부동소수점 잔재 | 반올림, 검증기가 거부 |
+| 5 | 기본 시나리오 20개로는 검정력 부족 | 60개(300 task), 개수는 `src/dataset_spec.py`에서 관리 |
+| 6 | 정답 후보 위치 편향(3번째 자리 0/20 등) | 분야별 위치 균형, 검증기가 검사 |
+| 7 | 오류 종류가 1개뿐 | `wrong_option` 추가 |
+| 8 | 조용한 오류만 있어 회복률 바닥 효과 위험 | `signaled_error_restart` 대조 조건 |
+| 9 | 핵심 가설(증폭)의 직접 검정 없음 | 정밀도 × horizon 상호작용, sign-flip 검정, Holm 보정 |
+| 10 | 다른 PC 결과를 경고 없이 비교 | 장비·설정 불일치 시 정밀도 비교 중단 |
+| 11 | 평균 시간이 일찍 실패한 실행까지 포함, 토큰 속도 없음 | 토큰/초, 턴당 지연, 성공 실행 평균 시간 |
+| 12 | 효율 축이 가중치 양자화 3점뿐 | KV cache 형식 기록, 추가 양자화 단계 생성, manifest 병합 |
+| 13 | 형식 오류 피드백이 모델 응답을 JSON 덤프로 보여줌 | 모델이 실제로 낸 텍스트를 그대로 보여줌 |
 
-자동 검사는 `/props`가 제공한 값에 한정됩니다. **실제 GPU 배치·GPU 모델·스레드·KV cache 정밀도·전체 서버 실행 옵션까지 검증한 것은 아닙니다.** 모델 hash도 `--model-path`로 지정한 로컬 파일의 hash이므로 서버가 그 파일을 사용했는지 시작 로그에서 확인합니다. 서버 설정을 요청에서 고정하는 동작과 `/props` 기록은 [llama.cpp 공식 서버 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)를 기준으로 구현했습니다. 구형 서버가 필수 속성을 제공하지 않으면 같은 지원 버전으로 팀 환경을 맞춥니다.
+### workflow-en-v2 설계 검토 체크리스트 대응
 
-## 6. 실제 모델로 조건 실행
+| 검토 항목 | 반영 | 버전 |
+|---|---|---|
+| 1·2 회복 h5 fixture가 다른 조건의 복사본 | 회복 h5 제외, h5는 `free`로만 분석 | v3 |
+| 3 `normal_restart` h1 draft 1개 | `free` h1과 같은 draft 3개 | v3 |
+| 4 horizon별 복구 비용 차이 | `violating_candidate` 복구 = horizon. `wrong_option`은 h3 복구 2회라 `recovery_min_calls`·`error_kind`별로 분리 보고 | v3·v4 |
+| 재발 방지: 조건 간 입력 동일성 검사 | 호출 ID를 무시한 입력 비교(모든 조건·오류 종류) | v3·v4 |
+| 5 함정 강도 불균일 | 모든 시나리오에서 위반 후보가 조건 무시 시 단독 1등 | v3 |
+| 5 "잘못된 배송 옵션" 오류 종류 추가 | `wrong_option` | v4 |
+| 6 h3·h5 차이 해석 | "대화 길이·ID 전달 효과"로 보고 | v3 |
+| 7 ID 복사 오류와 선택 오류 분리 | `identifier_error_*` vs `wrong_save_*` | v3 |
+| 8 시나리오 40~60개로 확대 | 60개 | v4 |
 
-서버 실행 후 별도 터미널에서 실행합니다. 아래 슬래시 경로는 Windows CMD/PowerShell·WSL·macOS 공통입니다. 예시는 self-Q4이며, 실제 FP16·Q8·Q4 모델을 서버에서 교체할 때 라벨·모델 경로·서버 PID도 맞춥니다.
+### workflow-en-v3
 
-```text
-python scripts/run_experiment.py --model-label self-Q4 --condition free --task-type execution --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2
-python scripts/run_experiment.py --model-label self-Q4 --condition normal_restart --task-type recovery --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2 --recovery-budget 3
-python scripts/run_experiment.py --model-label self-Q4 --condition error_restart --task-type recovery --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --base-url http://127.0.0.1:18080 --temperature 0 --seed 42 --max-tokens 512 --warmup-requests 2 --recovery-budget 3
-```
+회복 h5 fixture 삭제, 회복 checkpoint = 대응 `free` 과제의 제공 정보, h1 오류 흐름을 "draft 3개 준비 후 위반 draft 확정"으로 변경, 위반 후보 함정 강도 통일, ID 복사 오류 지표 추가.
 
-모델 hash와 메모리를 기록하려면 세 명령 모두에 실제 `--model-path models/모델파일.gguf --server-pid 실제PID`를 추가하고, GPU 실행이면 `--gpu-index 0`도 추가합니다. 처음 확인할 때는 `--limit 1`을 사용합니다.
+### workflow-en-v2
 
-`free`는 execution 60개, `normal_restart`와 `error_restart`는 같은 recovery 40개(h1·h3)를 각각 선택합니다. 회복 조건에 `--horizon 5`를 주면 선택할 과제가 없어 서버 요청 전에 중단합니다. `--condition recovery`를 입력해도 `error_restart`로 기록됩니다. 구버전 execution checkpoint 진단은 `--condition normal_restart --task-type execution`으로 명시해야 하며 회복 비교에는 포함되지 않습니다.
+자연스러운 오류(조건 위반 후보를 같은 요청으로 확정) 주입, `free`는 앞 단계 결과를 사용자 메시지로 제공, 다음 행동 정확도·작업 단계별 첫 오류·자기 회복률 지표, 정밀도 간 짝지은 비교, GPU 메모리 측정.
 
-세 정밀도에서 task·프롬프트·도구·추론 설정·장비·호출 예산을 같게 유지합니다. 공통 설정과 워밍업은 위 잠금 파일로 관리하며, 서버에서 확인된 버전은 `llama_cpp_version`에 기록합니다. 준비 프로토콜·서버 설정 hash·워밍업 정책·잠금 hash가 다른 결과는 같은 회복 비교로 합치지 않습니다. 전체 서버 설정의 자동 검증, resume/반복 번호는 여전히 별도 보완 대상입니다. 과거 워밍업 없는 결과와 현재 결과는 합치지 않습니다.
+---
 
-### h3·h5 또는 특정 과제만 예비 실행
+## 24. 알려진 한계
 
-`--horizon 3 --limit 1`은 h3 과제를 먼저 고른 뒤 그중 첫 1개를 실행합니다. `free`의 `--horizon 5 --limit 1`도 같습니다. `--limit 3`만 쓰면 현재 데이터 순서상 h1 과제 3개가 선택되므로, 서로 다른 horizon을 확인하는 방법이 아닙니다.
-
-원하는 시나리오를 확실히 맞추려면 `--task-id`를 사용합니다. execution의 `shopping_001_h3`과 회복 두 조건의 `recovery_shopping_001_h3`을 선택하면 같은 기본 시나리오를 확인할 수 있습니다. `--task-id`와 `--horizon`을 함께 주면 두 조건이 일치해야 합니다. ID가 없거나 유형/길이가 맞지 않으면 서버 요청 전에 중단합니다. 선택한 ID는 콘솔 출력과 결과 metadata의 `task_selection`에 기록합니다.
-
-아래는 같은 Q8 서버에서 CPU 예비 검증을 진행하는 예시입니다. 현재 서버 PID를 `--server-pid`로 각각 추가하며, 서버를 재시작했다면 새 PID를 사용합니다. 설정 잠금·프롬프트·추론 설정·예산은 기존 h1 예비 실행과 그대로 유지합니다. 모든 명령은 한 줄이며 Windows CMD·WSL·macOS에서 같은 슬래시 경로를 사용할 수 있습니다.
-
-```text
-python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition free --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_free_h3_01.jsonl --task-id shopping_001_h3
-python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition normal_restart --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_normal_h3_01.jsonl --task-id recovery_shopping_001_h3
-python scripts/run_experiment.py --model-label cpu-pilot-self-Q8 --condition error_restart --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --settings-lock results/cpu_pilot/settings.json --output results/cpu_pilot/Q8_error_h3_01.jsonl --task-id recovery_shopping_001_h3
-```
-
-h1은 세 명령의 task ID와 출력 파일명에서 `h3`을 `h1`로 바꿉니다. h5는 `free` 명령만 `shopping_001_h5`로 실행합니다(회복 h5 fixture 없음). 이것으로 h1·h3의 정상 수행·회복 정상·회복 오류와 h5 정상 수행, 모두 7개 실행을 확인할 수 있습니다. 이미 있는 결과는 덮어쓰지 않으며, 재실행할 때는 새 파일명을 사용합니다. 성공하지 못한 실행도 로그를 보관하고, 중간에 조건을 바꾸거나 실패한 결과를 성공한 재실행으로 대체하지 않습니다.
-
-필터를 사용해도 원본 100개 task에 대한 전체 검증은 먼저 수행합니다. 선택 옵션은 입력·정답·채점·추론 설정을 바꾸지 않으므로 기존 h1 예비 결과와 함께 분석할 수 있습니다. 같은 task/조건의 반복 실행은 중복으로 합치지 말고 별도 실험으로 분리합니다. 이 소수의 예비 결과로 정밀도 차이나 horizon 효과를 결론 내리지는 않습니다.
-
-## 7. 회복 실험과 집계
-
-### 공통 오류와 두 분기
-
-오류 유형은 `wrong_saved_result` 하나입니다. **조건을 위반한 후보를 같은 요청 ID로 확정한 상태**이며, `free`에서 모델이 스스로 낼 수 있는 오류(`saved_result_violates_request`)와 같은 종류입니다. 그래서 주입 실험의 회복률과 `free`에서 스스로 고친 비율(`wrong_save_recovery_rate`)을 나란히 비교할 수 있습니다.
-
-두 분기는 같은 checkpoint까지 모델 자신의 정상 호출 기록을 공유합니다. 이 기록은 대응 `free` 과제가 사용자 메시지로 받는 정보와 같습니다. 오류 분기에서는 그 뒤에 h3은 "조건 위반 후보의 상세 조회 → 그 후보로 draft 준비 → 확정", h1은 "이미 준비된 draft 3개 중 조건 위반 draft 확정" 기록이 이어집니다. 위반 후보는 모든 시나리오에서 조건을 무시하면 순위 1등(평점 최고·가격 최저 등)이지만 예산 같은 조건을 어긴 후보입니다.
-
-원래 질문을 그대로 사용하며, 새로운 회복 질문이나 정답 지시는 제공하지 않습니다. 같은 요청으로 올바른 draft를 다시 확정하면 잘못된 저장 결과가 교체됩니다. `discard_saved_result`로 먼저 지운 뒤 확정해도 됩니다.
-
-| Horizon | checkpoint까지 정상 기록 | 주입된 잘못된 기록 | 정상 최소 호출 | 복구 최소 호출 |
-|---|---|---|---:|---:|
-| 1 | 요청·후보·상세 2개·draft 3개(정답 1, 옵션 오류 1, 조건 위반 1). `free` h1과 같음 | 조건 위반 draft 확정 | 1 | 1 (정답 draft 확정) |
-| 3 | 요청·후보. `free` h3과 같음 | 위반 후보 상세 → draft → 확정 | 3 | 3 (정답 상세 → draft → 확정) |
-
-h5 회복 fixture는 없습니다. h5 checkpoint에는 이전 기록이 없어 `normal_restart`가 `free` h5와 같고, 잘못된 전체 경로를 주입하면 h3 오류 분기와 같은 상황이 되기 때문입니다.
-
-`normal_remaining_calls`와 `recovery_min_calls`를 따로 기록합니다. `checkpoint_state_hash`는 주입 전 공통 상태, `initial_state_hash`는 각 분기의 재개 상태입니다. 주입된 기록은 미리 만든 이력이며, 실제 모델이 자연스럽게 생성한 세션은 아닙니다.
-
-`--recovery-budget 3`이면 두 분기 모두 horizon + 3이라는 같은 응답 턴 상한을 사용합니다. 종료 응답·잘못된 형식의 응답도 한 턴을 사용합니다. 복구 최소 호출이 정상 최소 호출과 같으므로, 두 분기의 최소 작업량과 예산 여유가 같습니다. 예산 민감도를 확인하려면 같은 설정으로 `--recovery-budget 6` 실행을 별도 시리즈(새 `--settings-lock`·결과 폴더)로 추가하고, `recovery_comparison`의 `error_restart_budget_exhausted_rate`·`normal_restart_budget_exhausted_rate`를 함께 보고합니다. `--max-calls`를 지정하면 두 분기에 같은 고정 상한을 전달해야 합니다.
-
-미리 제공한 호출과 오류 주입 호출은 새 모델 호출·오류 횟수·실행시간·생성 토큰에 포함하지 않습니다.
-
-### 결과 비교
-
-실행 결과는 `results/` 아래에 JSONL로 저장됩니다. 실제 생성된 파일명으로 아래 예시를 바꿉니다.
-
-```text
-python scripts/analyze.py results/self-Q4_normal_restart_실행시각.jsonl results/self-Q4_error_restart_실행시각.jsonl --output results/recovery_summary.json --csv-output results/recovery_summary.csv --plot-dir results/plots
-```
-
-`recovery_comparison`은 같은 회복 fixture의 정상/오류 결과만 짝지어 다음을 계산합니다.
-
-- `normal_restart_success_rate`: 공통 정상 checkpoint에서의 완료율
-- `error_restart_success_rate`: 오류를 받은 뒤의 최종 완료율
-- `recovery_penalty`: 동일한 정상/오류 쌍의 성공률 차이
-- `mean_extra_calls_over_normal`: 정상 최소 호출보다 얼마나 더 사용했는지
-- `mean_extra_calls_over_oracle`: 해당 오류의 최소 복구 호출보다 얼마나 더 사용했는지
-- `error_restart_budget_exhausted_rate`, `normal_restart_budget_exhausted_rate`: 각 분기에서 응답 턴 예산을 다 쓴 비율
-
-추가 호출 평균은 완료한 오류 실행에 대해서만 계산합니다(`n_successful_error_runs`와 함께 보고). 실패 실행이 빨리 끝났다고 효율적인 회복으로 해석하지 않습니다. 정밀도마다 성공한 집합이 다르므로, 조건별 요약표의 `mean_extra_calls_over_normal_all_runs`(전체 실행 기준)도 함께 봅니다. 서로 다른 장비·모델 hash·task hash·seed·수집된 client 설정·예산·평가 버전·Agent 정책 버전은 같은 비교 쌍으로 합치지 않습니다. 동일한 실행을 중복 입력하면 오류로 알리며, 짝이 없는 결과와 서버/코드 예외가 있는 쌍은 진단 정보로 남깁니다. 잘못된 모델 출력은 대응 비교에서도 제외하지 않습니다. 기록되지 않은 서버 설정 차이까지 자동 검출하는 것은 아닙니다.
-
-`--csv-output results/recovery_summary.csv`를 지정하면 조건별 표와 함께 `results/recovery_summary_paired.csv`에 대응 비교 표를 저장합니다. 회복률 그림은 `error_restart` 결과를 사용합니다. 일반 표·그림은 같은 모델 라벨·프로토콜에 다른 수집 설정이 들어오면 분석을 중단합니다. 장비나 seed가 다른 결과는 별도로 분석하거나 라벨을 구분합니다. 누락된 metadata나 미수집 서버 설정까지 자동 검출할 수는 없습니다.
-
-execution의 `free` 결과는 전체 수행 분석용입니다. 이 성공률에서 회복 성공률을 빼는 구버전 `recovery_gap`은 사용하지 않습니다. 구버전 결과와 새 결과를 섞지 말고 별도 폴더에 보관합니다.
-
-### 회복·오류 지표 읽기
-
-- `recovery_success`: 잘못된 저장 결과를 바로잡고 원래 목표를 달성했는지
-- `recovery_error_resolved`: 주입된 잘못된 저장 결과가 최종 상태에 더 이상 없는지. 이것만 true이고 최종 과제는 실패할 수 있음(예: 지우기만 하고 정답을 저장하지 않음)
-- `recovery_resolution_step`: 잘못된 저장 결과가 처음 사라진 재개 이후 응답 단계
-- `next_action_correct`: 시작 상태에서 첫 응답이 기준 경로의 첫 호출(도구·인자)과 같은지. `next_action_accuracy`로 집계
-- `next_action_valid`: 첫 응답이 오류 없이 실행된 도구 호출인지(조회 등 다른 유효한 행동 포함). `next_action_valid_rate`로 집계
-- `first_error_kind`, `first_error_tool`, `first_error_workflow_stage`: 첫 오류의 종류, 도구, 5단계 작업 흐름상 위치(1~5, 보조 도구는 null). horizon이 달라도 비교 가능하며 요약표의 `first_error_stage_counts`로 집계
-- `natural_error_recovered`, `natural_error_recovery_rate`: `free`에서 오류를 낸 과제 중 최종적으로 성공한 비율
-- `wrong_save_episode`, `wrong_save_recovered`, `wrong_save_recovery_rate`: 모델이 스스로 조건 위반 결과를 저장한 적이 있는지, 그 뒤 고쳐서 성공했는지. 주입 실험 회복률과 같은 오류에 대한 자기 회복률. 존재하지만 틀린 후보를 고른 **선택 오류**에 해당
-- `identifier_error_count`, `identifier_error_episode`, `identifier_error_episode_rate`: 앞 결과가 발급하지 않은 ID를 쓴 **ID 복사 오류**(`unknown_request`, `context_not_found`, `offer_not_found`, `detail_not_found`, `unknown_option`, `draft_not_found`). 선택 오류와 분리해 "판단을 더 틀렸는지"와 "긴 ID를 더 잘못 옮겼는지"를 구분
-- `recovery_stable_resolution_turn`: 마지막 재발 이후 제거가 유지되기 시작한 응답 턴. 최종 상태에 잘못된 기록이 있으면 null
-- `recovery_completion_step`: 목표 상태에 처음 도달한 응답 단계. 이후 다시 망가뜨리면 최종 성공은 false
-- `recovery_error_count`: 재개 후 도구/인자 오류·잘못된 확정/삭제·미완료 종료·출력 형식 오류를 낸 응답 단계 수. 한 응답에서 여러 오류 표지가 있어도 1회로 계산
-- `recovery_first_error_step`: 주입된 오류가 아니라 모델이 재개 후 새로 낸 첫 오류 단계
-- `attempted_tool_call_count`: 모델이 출력한 도구 호출 시도 수. 한 응답에 여러 호출을 내면 모두 시도로 기록하되 실행하지 않음
-- `tool_call_count`, `executed_tool_call_count`: 실제 도구 실행기에 전달한 호출 수. 도구가 인자를 거절한 호출도 포함하며, 파싱 실패로 실행하지 못한 출력은 제외
-- `response_turn_count`: 모델 응답을 받은 횟수. 종료·출력 형식 오류도 포함하며, 응답 없이 끝난 서버/코드 예외 단계는 제외
-- `error_count`, `error_turn_rate`: 오류를 낸 응답 수와 전체 응답 수 대비 비율
-- `tool_error_action_count`, `tool_action_error_rate`: 실제 도구 호출 중 도구 거절 또는 잘못된 상태 변경이 발생한 호출 수와 비율
-- `natural_error_rate`: `free`에서 오류를 한 번 이상 낸 **과제의 비율**. 호출별 오류율이 아니며, 위 응답별/호출별 비율과 구분
-- `first_error_turn` (`first_error_step`과 동일): 재개 후 1부터 센 응답 턴. `first_error_tool_call_index`는 그 오류 응답이 실제 도구를 실행한 경우의 1-based 호출 번호이며 파싱·종료 오류이면 null
-- `extra_calls_over_normal`, `extra_calls_over_oracle`: 정상 기준/분기별 최소 호출 기준의 추가 비용
-- `model_output_error_count`: 잘못된 JSON·동시 다중 호출·토큰 상한 잘림 등으로 사용할 수 없었던 응답 수
-- `termination_reason`: `finished` / `budget_exhausted` / `infrastructure_error` / `internal_error`. 정상 조회만 반복하다 예산이 끝나면 오류 횟수 0인 실패도 가능
-- `n_runtime_errors`: 서버 장애 또는 코드 예외로 행동 성공률에서 제외된 실행 수. `n_infrastructure_errors`와 `n_internal_errors`로 세부 구분
-
-`recovery_error_resolved`는 **최종 상태**에서 잘못된 저장 결과가 없는지 확인합니다. `recovery_resolution_step`은 첫 교체 시점이므로, 이후 잘못된 결과를 다시 저장하면 첫 교체 시점이 있어도 최종 회복은 실패합니다. 주입된 호출과 제공된 과거 기록은 새 오류·호출 비용에 포함하지 않습니다. 선택적 조회와 유효한 다른 행동 순서는 오류가 아닙니다. 그래서 `next_action_correct`가 false여도 `next_action_valid`는 true일 수 있습니다. 비율의 분모가 0이면 null로 남깁니다. 집계의 `pooled_error_turn_rate`와 `pooled_tool_action_error_rate`는 유효한 과제들의 분자·분모를 각각 합친 비율입니다.
-
-### 출력 오류와 서버 장애 처리 정책
-
-모든 정밀도는 한 응답에 도구 호출 하나만 내도록 같은 시스템 지시를 받습니다. 여러 호출을 내면 첫 번째만 조용히 실행하지 않고 전체 응답을 거절합니다. 잘못된 모델 출력은 원문·토큰 사용량·`finish_reason`·오류 종류를 로그에 남기고, 정답을 알려주지 않는 고정된 형식 안내만 제공합니다. 이 응답도 동일한 응답 턴 예산을 소비합니다. 잘린 응답(`finish_reason=length`)은 도구 실행 전에 거절합니다. 파싱 오류 뒤 올바르게 복구하면 최종 성공은 가능하지만 발생한 출력 오류는 지워지지 않습니다.
-
-HTTP 오류·타임아웃·연결 실패·잘못된 서버 응답 형식은 `infrastructure_error`, 예상하지 못한 코드 예외는 `internal_error`로 종료합니다. 이 실행은 모델 성공률 분모에서 제외하며, 대응 비교에서도 어느 한쪽에 장애가 있으면 그 쌍을 제외하고 개수를 보고합니다. 제외가 많거나 정밀도별로 치우치면 서버·설정 문제를 먼저 점검하고 해당 과제를 다시 수집해야 합니다. 자동 재시도는 아직 없으므로 중복 결과를 그대로 합치지 않습니다.
-
-현재 `metrics_version=workflow-metrics-v5`, `agent_policy_version=single-action-feedback-v1`을 metadata·trace·score에 기록합니다. task 프로토콜은 `free`가 `execution-v3-provided-context`, 회복이 `wrong-saved-result-v4`입니다. 이전 버전 결과는 새 지표로 소급 해석하지 않고 별도로 보관합니다. 같은 모델 파일을 쓰더라도 조건·평가가 바뀌었으므로 본실험 결과는 새로 수집합니다.
-
-## 8. 연구용 task 구성과 검증
-
-```text
-20개 기본 시나리오 × 정상 horizon 1·3·5 = execution 60개
-h1·h3 execution과 대응하는 recovery fixture = recovery 40개
-모델당 free 60회 + normal_restart 40회 + error_restart 40회 = 140회
-```
-
-각 task에는 원래 질문·환경 fixture·정답 경로·미리 제공할 결과·최종 성공 조건이 있습니다. 회복 task에는 오류 주입 호출, 별도 복구 정답 경로, 정상/복구 최소 호출도 있습니다.
-
-`gold_actions`는 정상적으로 남은 호출이고, `recovery_actions`는 잘못 저장된 결과를 바로잡는 최소 복구 경로입니다. `initial_actions`의 의미는 과제 유형마다 다릅니다. execution에서는 상태에 미리 만들고 **사용자 메시지로 보여줄** 조회 결과이고(h1은 draft 3개 포함), recovery에서는 **모델 자신의 과거 호출로 보여줄** 정상 기록입니다. 회복 task의 `checkpoint_step=0`은 그 남은 경로에서 추가 재생하지 않는다는 뜻입니다. 실제 전체 작업 흐름의 checkpoint 깊이는 `resume_workflow_step`이며 회복 h1·h3에서 각각 4·2입니다. 회복 task의 `initial_actions`는 대응 execution의 `initial_actions`와 같습니다.
-
-```text
-python scripts/build_tasks.py --check
-python scripts/validate_tasks.py
-python -m unittest discover -s tests -v
-python scripts/smoke_test.py
-```
-
-검증에는 60개 execution 재생, h1 오답 draft 거부, 40개 회복 정상 분기와 40개 오류 분기의 재생, 오류 관측·공통 checkpoint 검사, 삭제 후 재확정 같은 합법적인 다른 복구, 부분 경로 우회 검사, `free`/`normal_restart` 정보 동일·입력 분리 검사, 전체 조건 입력 중복 검사, 위반 후보 순위 검사가 포함됩니다. 실제 모델 테스트와 구분합니다.
-
-[정상 시나리오](tasks/EXECUTION_TASKS.md), [회복 설계·목록](tasks/RECOVERY_TASKS.md)을 함께 확인합니다. 20개 기본 시나리오의 대응 조건을 독립 표본 60개(회복은 40개)처럼 분석하지 않습니다. 이번 회복 조건은 ‘조건을 위반한 후보가 같은 요청으로 저장된 오류’ 하나이며 모든 오류 유형에 일반화하지 않습니다. 결과 해석 시 Q4는 `Q4_K_M`(일부 텐서는 더 높은 정밀도를 쓰는 혼합 양자화)임을 함께 적습니다. 본실험 전에 FP16 파일럿으로 h5 기준 성공률이 너무 낮지 않은지(바닥 효과) 먼저 확인합니다. BFCL은 내부 실험이 안정화된 뒤 외부 검증용으로 별도 추가합니다.
+- **과제 다양성.** 4개 분야 모두 같은 5단계 템플릿이고 후보는 3개뿐입니다. 실제 Agent 작업 전체를 대표하지 않습니다.
+- **오류 다양성.** 회복 오류는 "같은 요청으로 잘못된 결과가 저장됨" 계열의 두 종류입니다. 다른 오류(잘못된 도구, 오래된 정보, 중간 단계 누락)로 일반화하지 않습니다.
+- **주입된 기록.** 오류 분기의 과거 기록은 미리 만든 이력이며, 해당 모델이 실제로 만든 세션이 아닙니다. 자기가 만든 기록인지 여부가 회복에 영향을 줄 수 있습니다.
+- **단일 실행.** temperature 0으로 과제당 한 번 실행하므로 샘플링 변동은 측정하지 않습니다. greedy decoding이라도 장비가 다르면 출력이 다를 수 있습니다.
+- **짧은 대화.** 가장 긴 과제도 입력이 수천 자 수준입니다. 수십 단계에 걸친 장기 Agent에 대한 결론은 아닙니다.
+- **단일 모델.** Qwen3-1.7B 하나만 다룹니다. 모델 크기에 따른 차이는 다루지 않습니다.
+- **설정 검증 범위.** 서버가 `/props`로 보고하는 값만 자동 검사합니다. 실제 GPU 배치, 스레드, KV cache 정밀도는 서버 시작 로그로 사람이 확인해야 합니다.
+- **외부 검증.** 일반적인 tool-calling 성능이 같은 방향인지는 BFCL 등 외부 벤치마크로 내부 실험이 안정된 뒤 별도로 확인합니다.
+- **resume 없음.** 실행이 중간에 끊기면 이어서 하는 기능이 없습니다. 이미 기록된 줄은 남으므로, 남은 과제를 `--task-id`/`--horizon`으로 골라 새 파일로 실행합니다.

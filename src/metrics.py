@@ -46,7 +46,7 @@ def _final_state_success(state: dict[str, Any], condition: dict[str, Any]) -> bo
 
 
 def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
-    if task.schema_version in {"execution-v2", "recovery-v2"}:
+    if task.schema_version in {"execution-v2", "recovery-v3"}:
         from .workflow_metrics import score_workflow_trace
 
         return score_workflow_trace(task, trace)
@@ -154,19 +154,19 @@ def score_trace(task: Task, trace: dict[str, Any]) -> dict[str, Any]:
 
 
 def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[tuple[str, str, str, str, str, int], list[dict[str, Any]]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, str, str, int, str], list[dict[str, Any]]] = defaultdict(list)
     for result in results:
         key = (result.get("model_label", "unknown"), result.get("protocol_version", "legacy-v1"),
                result.get("metrics_version", "legacy-unversioned"),
                result.get("agent_policy_version", "legacy-unversioned"),
-               result["condition"], result["horizon"])
+               result["condition"], result["horizon"], result.get("error_kind") or "")
         groups[key].append(result)
 
     summaries: list[dict[str, Any]] = []
-    for (model_label, protocol_version, metrics_version, agent_policy_version, condition, horizon), rows in sorted(groups.items()):
+    for (model_label, protocol_version, metrics_version, agent_policy_version, condition, horizon, error_kind), rows in sorted(groups.items()):
         count = len(rows)
         valid_rows = [row for row in rows if row.get("valid_for_behavior_metrics", True)]
-        is_recovery = condition in {"recovery", "error_restart"}
+        is_recovery = condition in {"recovery", "error_restart", "signaled_error_restart"}
 
         def mean(name: str) -> float | None:
             source = [row for row in valid_rows if row.get("strict_success")] if name.startswith("extra_calls") else valid_rows
@@ -184,6 +184,13 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                          and isinstance(row.get(denominator), (int, float)) and not isinstance(row[denominator], bool)]
             total = sum(row[denominator] for row in available)
             return round(sum(row[numerator] for row in available) / total, 4) if total else None
+
+        def pooled_rate(tokens: str, milliseconds: str) -> float | None:
+            """Tokens per second over all responses: sum(tokens) / sum(seconds)."""
+            available = [row for row in valid_rows
+                         if isinstance(row.get(tokens), (int, float)) and isinstance(row.get(milliseconds), (int, float))]
+            total_ms = sum(row[milliseconds] for row in available)
+            return round(sum(row[tokens] for row in available) / (total_ms / 1000), 3) if total_ms > 0 else None
 
         error_episodes = [row["error_count"] > 0 for row in valid_rows
                           if isinstance(row.get("error_count"), (int, float))]
@@ -207,6 +214,7 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "agent_policy_version": agent_policy_version,
                 "condition": condition,
                 "horizon": horizon,
+                "error_kind": error_kind or None,
                 "n": count,
                 "n_valid": len(valid_rows),
                 "n_runtime_errors": count - len(valid_rows),
@@ -265,7 +273,15 @@ def aggregate(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mean_recovery_completion_step": mean("recovery_completion_step")
                 if is_recovery
                 else None,
+                # All valid runs: a run that fails early also ends early, so this
+                # mixes speed with behavior. Prefer the normalized fields below.
                 "mean_elapsed_ms": mean("elapsed_ms"),
+                "mean_elapsed_ms_successful": (lambda values: round(sum(values) / len(values), 4) if values else None)(
+                    [row["elapsed_ms"] for row in valid_rows if row.get("strict_success") is True
+                     and isinstance(row.get("elapsed_ms"), (int, float))]),
+                "mean_ms_per_response_turn": mean("ms_per_response_turn"),
+                "pooled_prompt_tokens_per_second": pooled_rate("prompt_eval_tokens", "prompt_eval_ms"),
+                "pooled_generation_tokens_per_second": pooled_rate("generated_tokens", "generation_ms"),
                 "mean_extra_calls_over_normal": mean("extra_calls_over_normal"),
                 "mean_extra_calls_over_oracle": mean("extra_calls_over_oracle"),
                 "recovery_error_resolved_rate": rate("recovery_error_resolved") if is_recovery else None,

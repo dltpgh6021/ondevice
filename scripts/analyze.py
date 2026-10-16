@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -43,8 +44,20 @@ def validate_analysis_configurations(records: list[dict[str, Any]]) -> None:
                          + ". Analyze legacy and current protocols separately.")
 
 
+_QUANT_PATTERN = re.compile(r"(?<![A-Za-z0-9])(BF16|FP16|F16|F32|IQ\d_[A-Z_]+|Q\d(?:_K)?(?:_[A-Z0-9]+)?)(?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def _quantization_of(label: str) -> str | None:
+    """Quantization named in a result label, e.g. 'cpu-pilot-self-Q4_K_M' -> 'Q4_K_M'."""
+    matches = _QUANT_PATTERN.findall(label)
+    if not matches:
+        return None
+    value = matches[-1].upper()
+    return "F16" if value == "FP16" else value
+
+
 def _storage_by_label(manifest_path: str | Path | None) -> dict[str, dict[str, Any]]:
-    """Create convenient result-label aliases from models/manifest.json."""
+    """Map exact manifest labels and quantization names to model file info."""
     if not manifest_path:
         return {}
     path = Path(manifest_path)
@@ -65,18 +78,8 @@ def _storage_by_label(manifest_path: str | Path | None) -> dict[str, dict[str, A
 
     storage: dict[str, dict[str, Any]] = {}
     for item in items:
-        quantization = str(item.get("quantization", "")).upper()
         label = str(item.get("label", ""))
-        aliases = {label} if label else set()
         is_reference = "official" in label.lower() or "reference" in label.lower()
-        if quantization in {"F16", "F32", "BF16"}:
-            aliases.update({"FP16", "self-FP16"})
-        elif quantization.startswith("Q8"):
-            aliases.add("reference-Q8" if is_reference else "self-Q8")
-            aliases.add("Q8")
-        elif quantization.startswith("Q4"):
-            aliases.add("reference-Q4" if is_reference else "self-Q4")
-            aliases.add("Q4")
         info = {
             "filename": item.get("filename"),
             "quantization": item.get("quantization"),
@@ -84,9 +87,31 @@ def _storage_by_label(manifest_path: str | Path | None) -> dict[str, dict[str, A
             "size_mb": item.get("size_mb"),
             "sha256": item.get("sha256"),
         }
-        for alias in aliases:
-            storage[alias] = info
+        if label:
+            storage[label] = info
+        quantization = str(item.get("quantization", "")).upper()
+        if quantization:
+            storage.setdefault(("reference:" if is_reference else "self:") + quantization, info)
     return storage
+
+
+def lookup_storage(storage: dict[str, dict[str, Any]], label: str) -> dict[str, Any] | None:
+    """Exact label first, then the quantization named in the label."""
+    if label in storage:
+        return storage[label]
+    quantization = _quantization_of(label)
+    if quantization is None:
+        return None
+    if quantization in {"F16", "BF16", "F32"}:
+        candidates = [value for key, value in storage.items() if key.startswith("self:") and key[5:] in {"F16", "BF16", "F32"}]
+        return candidates[0] if candidates else None
+    prefix = "reference:" if any(word in label.lower() for word in ("reference", "official")) else "self:"
+    if prefix + quantization in storage:
+        return storage[prefix + quantization]
+    # Short names such as "Q8" or "Q4" match one manifest type like Q8_0 / Q4_K_M.
+    matches = [value for key, value in storage.items()
+               if key.startswith(prefix) and key[len(prefix):].startswith(quantization + "_")]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _write_csv(rows: list[dict[str, Any]], path: str | Path) -> None:
@@ -122,24 +147,28 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
     def plot_metric(filename: str, title: str, metric: str, condition: str, ylabel: str) -> None:
         plotted = False
         figure, axis = plt.subplots(figsize=(7, 4.5))
+        kinds = sorted({row.get("error_kind") or "" for row in summaries if row.get("condition") == condition})
         for model in models:
-            rows = [
-                row
-                for row in summaries
-                if row.get("model_label") == model
-                and row.get("condition") == condition
-                and isinstance(row.get(metric), (int, float))
-            ]
-            rows.sort(key=lambda row: row.get("horizon", 0))
-            if not rows:
-                continue
-            axis.plot(
-                [row["horizon"] for row in rows],
-                [row[metric] for row in rows],
-                marker="o",
-                label=model,
-            )
-            plotted = True
+            for kind in kinds:
+                rows = [
+                    row
+                    for row in summaries
+                    if row.get("model_label") == model
+                    and row.get("condition") == condition
+                    and (row.get("error_kind") or "") == kind
+                    and isinstance(row.get(metric), (int, float))
+                ]
+                rows.sort(key=lambda row: row.get("horizon", 0))
+                if not rows:
+                    continue
+                axis.plot(
+                    [row["horizon"] for row in rows],
+                    [row[metric] for row in rows],
+                    marker="o",
+                    linestyle="--" if kind == "wrong_option" else "-",
+                    label=f"{model} ({kind})" if kind else model,
+                )
+                plotted = True
         if not plotted:
             plt.close(figure)
             return
@@ -161,13 +190,17 @@ def _write_plots(summaries: list[dict[str, Any]], output_dir: str | Path) -> lis
     plot_metric("natural_error_rate_free_by_horizon.png", "Natural error rate by horizon", "natural_error_rate", "free", "Natural error rate")
     plot_metric("error_turn_rate_free_by_horizon.png", "Execution errors per response turn", "pooled_error_turn_rate", "free", "Error turns / response turns")
     plot_metric("tool_action_error_rate_free_by_horizon.png", "Execution errors per executed tool call", "pooled_tool_action_error_rate", "free", "Erroneous calls / executed calls")
-    plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon", "recovery_rate", "error_restart", "Recovery rate")
+    plot_metric("recovery_rate_by_horizon.png", "Recovery rate by horizon (silent error)", "recovery_rate", "error_restart", "Recovery rate")
+    plot_metric("signaled_recovery_rate_by_horizon.png", "Recovery rate by horizon (signaled error)", "recovery_rate", "signaled_error_restart", "Recovery rate")
     plot_metric("error_turn_rate_recovery_by_horizon.png", "Recovery errors per response turn", "pooled_error_turn_rate", "error_restart", "Error turns / response turns")
     plot_metric("normal_restart_success_by_horizon.png", "Matched normal restart success", "success_rate", "normal_restart", "Success rate")
     plot_metric("next_action_accuracy_normal_by_horizon.png", "Next-action accuracy from the correct checkpoint", "next_action_accuracy", "normal_restart", "Next-action accuracy")
     plot_metric("wrong_save_recovery_free_by_horizon.png", "Self-recovery after a wrong save (free)", "wrong_save_recovery_rate", "free", "Recovery rate")
     plot_metric("gpu_memory_free_by_horizon.png", "Peak GPU memory by horizon", "mean_peak_gpu_memory_mb", "free", "Mean peak GPU memory used (MB)")
-    plot_metric("elapsed_ms_free_by_horizon.png", "Execution time by horizon", "mean_elapsed_ms", "free", "Mean elapsed time (ms)")
+    plot_metric("elapsed_ms_successful_free_by_horizon.png", "Execution time of successful runs", "mean_elapsed_ms_successful", "free", "Mean elapsed time (ms)")
+    plot_metric("ms_per_turn_free_by_horizon.png", "Latency per response turn", "mean_ms_per_response_turn", "free", "ms per response turn")
+    plot_metric("generation_tps_free_by_horizon.png", "Generation throughput", "pooled_generation_tokens_per_second", "free", "Generated tokens / s")
+    plot_metric("prompt_tps_free_by_horizon.png", "Prompt evaluation throughput", "pooled_prompt_tokens_per_second", "free", "Prompt tokens / s")
     plot_metric("server_ram_free_by_horizon.png", "Peak server RAM by horizon", "mean_peak_server_ram_mb", "free", "Mean peak server RAM (MB)")
     return files
 
@@ -181,6 +214,8 @@ def main() -> int:
     parser.add_argument("--plot-dir", default=None, help="Optional directory for PNG figures")
     parser.add_argument("--reference-label", default=None,
                         help="Model label compared against (default: the single label containing FP16)")
+    parser.add_argument("--allow-mixed-configuration", action="store_true",
+                        help="Compare labels collected on different machines/settings (not recommended)")
     args = parser.parse_args()
 
     records: list[dict[str, Any]] = []
@@ -199,7 +234,7 @@ def main() -> int:
     condition_summaries = aggregate(scores)
     storage = _storage_by_label(args.manifest)
     for summary in condition_summaries:
-        info = storage.get(str(summary.get("model_label")))
+        info = lookup_storage(storage, str(summary.get("model_label")))
         summary["model_storage_mb"] = info.get("size_mb") if info else None
         summary["model_quantization"] = info.get("quantization") if info else None
 
@@ -213,19 +248,24 @@ def main() -> int:
         if reference_label not in labels:
             raise SystemExit(f"--reference-label {reference_label} is not among the analyzed labels: {sorted(labels)}")
         try:
-            result["precision_comparison"] = compare_precisions(records, reference_label)
+            result["precision_comparison"] = compare_precisions(
+                records, reference_label, allow_mixed_configuration=args.allow_mixed_configuration)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
     elif len(labels) > 1:
         result["precision_comparison"] = {"skipped": "pass --reference-label; no single FP16 label was found"}
     if args.csv_output:
         _write_csv(condition_summaries, args.csv_output)
-        precision_rows = result.get("precision_comparison", {}).get("success_differences")
-        if precision_rows:
-            csv_path = Path(args.csv_output)
-            precision_path = csv_path.with_name(csv_path.stem + "_precision.csv")
-            _write_csv(precision_rows, precision_path)
-            result["precision_csv"] = str(precision_path)
+        comparison = result.get("precision_comparison", {})
+        csv_path = Path(args.csv_output)
+        for family, suffix in (("success_differences", "_precision.csv"),
+                               ("horizon_interactions", "_interaction.csv"),
+                               ("recovery_penalty_differences", "_penalty.csv")):
+            rows = comparison.get(family)
+            if rows:
+                destination = csv_path.with_name(csv_path.stem + suffix)
+                _write_csv(rows, destination)
+                result[family + "_csv"] = str(destination)
         if paired["summaries"]:
             csv_path = Path(args.csv_output)
             paired_path = csv_path.with_name(csv_path.stem + "_paired.csv")

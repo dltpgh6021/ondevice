@@ -9,6 +9,7 @@ import json
 from collections import Counter, defaultdict
 from typing import Any
 
+from .dataset_spec import BASE_SCENARIOS, EXECUTION_TASKS, SCENARIOS_PER_DOMAIN
 from .execution_environment import ExecutionEnvironment, WORKFLOWS, candidate_is_eligible, resource_id
 from .tasks import Task
 
@@ -82,17 +83,18 @@ def _environment(task: Task) -> ExecutionEnvironment:
 
 
 def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
-    """Validate 20 matched scenarios with 1/3/5 remaining workflow calls."""
+    """Validate matched scenarios with 1/3/5 remaining workflow calls."""
     execution = [t for t in tasks if t.task_type == "execution"]
-    _require(len(execution) == 60, f"expected 60 execution tasks, found {len(execution)}")
+    _require(len(execution) == EXECUTION_TASKS, f"expected {EXECUTION_TASKS} execution tasks, found {len(execution)}")
     _require(all(t.schema_version == "execution-v2" for t in execution), "execution tasks must all use execution-v2")
-    _require(len({t.task_id for t in execution}) == 60, "duplicate execution task IDs")
+    _require(len({t.task_id for t in execution}) == EXECUTION_TASKS, "duplicate execution task IDs")
     by_base: dict[str, list[Task]] = defaultdict(list)
     for task in execution:
         by_base[task.base_id].append(task)
-    _require(len(by_base) == 20, f"expected 20 base scenarios, found {len(by_base)}")
+    _require(len(by_base) == BASE_SCENARIOS, f"expected {BASE_SCENARIOS} base scenarios, found {len(by_base)}")
     domains = Counter(group[0].domain for group in by_base.values())
-    _require(domains == Counter({d: 5 for d in WORKFLOWS}), "expected five base scenarios per domain")
+    _require(domains == Counter({d: SCENARIOS_PER_DOMAIN for d in WORKFLOWS}),
+             f"expected {SCENARIOS_PER_DOMAIN} base scenarios per domain")
     checks: Counter[str] = Counter()
     for base_id, variants in by_base.items():
         _require(Counter(t.horizon for t in variants) == Counter({1: 1, 3: 1, 5: 1}), f"{base_id}: missing matched horizons")
@@ -219,12 +221,40 @@ def validate_execution_tasks(tasks: list[Task]) -> dict[str, Any]:
                     _require(result.get("ok") is True, f"{base_id}: wrong-choice probe not executable: {result}")
                 _require(not env.check_success(reference.success_condition), f"{base_id}: wrong choice passes grading")
                 checks["wrong_choice_rejections"] += 1
+    # No list position may predict the answer: within every domain the correct
+    # candidate, its requested option, the trap and the correct h1 draft are
+    # spread evenly over positions (counts differ by at most one).
+    positions: dict[str, Counter] = defaultdict(Counter)
+    for base_id, variants in by_base.items():
+        reference = variants[0]
+        spec = reference.execution_spec
+        candidate, option = _infer_target(spec)
+        ids = [item["candidate_id"] for item in spec["candidates"]]
+        violating = next(item for item in spec["candidates"] if not candidate_is_eligible(item, spec))
+        domain = reference.domain
+        positions[f"{domain}/target_candidate"][ids.index(candidate["candidate_id"])] += 1
+        positions[f"{domain}/violating_candidate"][ids.index(violating["candidate_id"])] += 1
+        positions[f"{domain}/target_option"][[o["option_id"] for o in candidate["options"]].index(option["option_id"])] += 1
+        h1 = next(t for t in variants if t.horizon == 1)
+        prepare = WORKFLOWS[domain]["names"][3]
+        drafts = [action for action in h1.initial_actions or [] if action["tool"] == prepare]
+        positions[f"{domain}/h1_correct_draft"][drafts.index(_actions(spec, candidate, option)[3])] += 1
+        for item in spec["candidates"]:
+            for key, value in item["summary"].items():
+                _require(type(value) is not float or float(f"{value:.4f}") == value,
+                         f"{base_id}: {key}={value!r} carries a floating-point artifact into the model input")
+    for name, counter in positions.items():
+        slots = 2 if name.endswith("target_option") else 3
+        counts = [counter.get(slot, 0) for slot in range(slots)]
+        _require(max(counts) - min(counts) <= 1, f"{name}: answer positions are unbalanced {counts}")
+    checks["position_balance_groups"] = len(positions)
     return {
         "valid": True, "execution_tasks": len(execution), "base_scenarios": len(by_base),
         "by_horizon": {str(h): n for h, n in sorted(Counter(t.horizon for t in execution).items())},
         "by_domain": dict(sorted(Counter(t.domain for t in execution).items())),
         "checks": dict(sorted(checks.items())),
-        "validation_scope": "reference subsequences, prerequisite swaps, legacy mutations, and wrong choices",
+        "answer_positions": {name: dict(sorted(counter.items())) for name, counter in sorted(positions.items())},
+        "validation_scope": "reference subsequences, prerequisite swaps, legacy mutations, wrong choices, and answer-position balance",
         "limitations": [
             "Not exhaustive search over arbitrary tool arguments or action sequences.",
             "Horizon is remaining calls in a controlled five-resource workflow; earlier results are supplied in the user message.",

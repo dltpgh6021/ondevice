@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +32,35 @@ class Task:
     recovery_min_calls: int | None = None
     language: str = "unspecified"
     dataset_version: str = "legacy"
+    # recovery-v3: every error family at the shared checkpoint. The flat
+    # error_injection / recovery_actions / recovery_min_calls fields hold the
+    # currently selected family (error_kind); see with_error_kind().
+    error_kind: str | None = None
+    error_variants: dict[str, Any] | None = None
+
+    def with_error_kind(self, kind: str) -> "Task":
+        """The same fixture resolved to one error family."""
+        if not self.error_variants:
+            if kind != (self.error_kind or kind):
+                raise ValueError(f"{self.task_id}: no error variant {kind}")
+            return self
+        if kind not in self.error_variants:
+            raise ValueError(f"{self.task_id}: unknown error kind {kind}; available {sorted(self.error_variants)}")
+        variant = self.error_variants[kind]
+        return replace(self, error_kind=kind, error_injection=variant["error_injection"],
+                       recovery_actions=list(variant["recovery_actions"]),
+                       recovery_min_calls=int(variant["recovery_min_calls"]))
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Task":
+        variants = data.get("error_variants")
+        kind = None
+        selected: dict[str, Any] = {}
+        if isinstance(variants, dict) and variants:
+            from .dataset_spec import DEFAULT_ERROR_KIND
+
+            kind = DEFAULT_ERROR_KIND if DEFAULT_ERROR_KIND in variants else sorted(variants)[0]
+            selected = variants[kind]
         task = cls(
             task_id=str(data["id"]),
             base_id=str(data.get("base_id", data["id"])),
@@ -46,18 +72,23 @@ class Task:
             error_description=str(data["error_description"]) if data.get("error_description") else None,
             gold_actions=list(data["gold_actions"]),
             checkpoint_step=int(data.get("checkpoint_step", 0)),
-            error_injection=data.get("error_injection"),
+            error_injection=selected.get("error_injection", data.get("error_injection")),
             success_condition=dict(data["success_condition"]),
             schema_version=str(data.get("schema_version", "legacy-v1")),
             initial_actions=list(data.get("initial_actions", [])),
             execution_spec=data.get("execution_spec"),
-            recovery_actions=list(data.get("recovery_actions", [])),
+            recovery_actions=list(selected.get("recovery_actions", data.get("recovery_actions", []))),
             normal_remaining_calls=int(data["normal_remaining_calls"]) if "normal_remaining_calls" in data else None,
-            recovery_min_calls=int(data["recovery_min_calls"]) if "recovery_min_calls" in data else None,
+            recovery_min_calls=(int(selected["recovery_min_calls"]) if "recovery_min_calls" in selected
+                                else int(data["recovery_min_calls"]) if "recovery_min_calls" in data else None),
             language=str(data.get("language", "unspecified")),
             dataset_version=str(data.get("dataset_version", "legacy")),
+            error_kind=kind,
+            error_variants=variants if isinstance(variants, dict) and variants else None,
         )
         validate_task(task)
+        for other in sorted(task.error_variants or {}):
+            validate_task(task.with_error_kind(other))
         return task
 
 
@@ -85,14 +116,20 @@ def validate_task(task: Task) -> None:
             raise ValueError(f"{task.task_id}: only shorter horizons may seed provided context")
     if task.task_type == "recovery" and not task.error_injection:
         raise ValueError(f"{task.task_id}: recovery task requires error_injection")
-    if task.schema_version == "recovery-v2":
+    if task.schema_version == "recovery-v3":
         if task.task_type != "recovery" or not task.execution_spec or task.recovery_query:
-            raise ValueError(f"{task.task_id}: recovery-v2 requires a fixture and the original query only")
+            raise ValueError(f"{task.task_id}: recovery-v3 requires a fixture and the original query only")
         # h5 has no checkpoint history, so recovery fixtures exist only for h1 and h3.
         if task.horizon not in {1, 3} or not task.initial_actions or task.checkpoint_step != 0:
             raise ValueError(f"{task.task_id}: invalid recovery checkpoint")
-        if task.normal_remaining_calls != task.horizon or task.recovery_min_calls != task.horizon:
-            raise ValueError(f"{task.task_id}: normal and repair minimums must both equal the horizon")
+        if task.normal_remaining_calls != task.horizon:
+            raise ValueError(f"{task.task_id}: normal remaining calls must equal the horizon")
+        if not task.error_variants or not task.error_kind:
+            raise ValueError(f"{task.task_id}: recovery-v3 requires error_variants")
+        if (task.error_injection or {}).get("error_kind") != task.error_kind:
+            raise ValueError(f"{task.task_id}: error variant label differs from its injection")
+        if not isinstance(task.recovery_min_calls, int) or not 1 <= task.recovery_min_calls <= task.horizon:
+            raise ValueError(f"{task.task_id}: repair minimum must be between 1 and the horizon")
         if len(task.recovery_actions or []) != task.recovery_min_calls:
             raise ValueError(f"{task.task_id}: recovery oracle length differs from recovery_min_calls")
     for index, action in enumerate(task.gold_actions):

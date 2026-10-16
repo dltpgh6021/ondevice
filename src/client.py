@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import http.client
 import math
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -58,6 +59,15 @@ class ModelOutputError(ValueError):
         self.attempted_tool_call_count = len(calls) if isinstance(calls, list) else 0
         if not self.attempted_tool_call_count and message_value.get("function_call"):
             self.attempted_tool_call_count = 1
+
+
+# Text that is evidently an attempted tool call the server did not parse.
+# Treating it as a final answer would end the episode as a premature finish and
+# turn a format failure into a decision failure, which can differ by precision.
+_UNPARSED_TOOL_CALL = re.compile(
+    r"</?tool_call>|<function[=>]|\"(?:arguments|parameters)\"\s*:", re.IGNORECASE)
+# llama.cpp may reject its own parse of model-generated text with HTTP 500.
+_SERVER_OUTPUT_PARSE_FAILURE = re.compile(r"failed to parse input", re.IGNORECASE)
 
 
 def _normalize_arguments(value: Any) -> dict[str, Any]:
@@ -149,7 +159,17 @@ def parse_chat_response(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             if isinstance(candidate, dict) and candidate.get("type") == "finish":
                 return {"type": "finish", "answer": str(candidate.get("answer", ""))}
+            if isinstance(candidate, dict) and isinstance(candidate.get("name"), str):
+                failure = ModelOutputError("tool call was written as text instead of a parsed tool call",
+                                           kind="unparsed_tool_call", payload=payload)
+                failure.attempted_tool_call_count = 1
+                raise failure
             raise ModelOutputError("JSON response is not a supported action", kind="invalid_action", payload=payload)
+        if _UNPARSED_TOOL_CALL.search(stripped):
+            failure = ModelOutputError("tool call markup was left unparsed in the text response",
+                                       kind="unparsed_tool_call", payload=payload)
+            failure.attempted_tool_call_count = 1
+            raise failure
     else:
         raise ModelOutputError("response content must be text", kind="invalid_action", payload=payload)
     return {"type": "finish", "answer": str(content)}
@@ -184,6 +204,7 @@ class LlamaCppClient:
         seed: int = 42,
         max_tokens: int = 512,
         timeout_seconds: float = 120.0,
+        cache_prompt: bool = False,
     ) -> None:
         if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
                 or not math.isfinite(temperature) or temperature < 0):
@@ -202,11 +223,16 @@ class LlamaCppClient:
         self.seed = seed
         self.max_tokens = max_tokens
         self.timeout_seconds = timeout_seconds
+        if not isinstance(cache_prompt, bool):
+            raise ValueError("cache_prompt must be a boolean")
+        self.cache_prompt = cache_prompt
 
     def request_settings(self) -> dict[str, Any]:
         """Exact, model-independent settings sent on EVERY inference request.
 
-        Deliberately uncached, non-thinking and one-action-at-a-time. Only the
+        Non-thinking and one-action-at-a-time; prompt caching is off by default
+        (each response re-evaluates its whole prompt) and can be enabled as a
+        separate series to mimic a deployed agent that reuses its KV cache. Only the
         temperature sampler is active, so inherited filters/penalties cannot
         silently change the sampling chain between servers.
         """
@@ -216,7 +242,7 @@ class LlamaCppClient:
             "repeat_penalty": 1.0, "presence_penalty": 0.0, "frequency_penalty": 0.0,
             "samplers": ["temperature"], "dynatemp_range": 0.0, "mirostat": 0,
             "chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none",
-            "parallel_tool_calls": False, "cache_prompt": False, "stream": False, "n": 1,
+            "parallel_tool_calls": False, "cache_prompt": self.cache_prompt, "stream": False, "n": 1,
             "tool_choice": "auto",
         }
 
@@ -227,6 +253,15 @@ class LlamaCppClient:
                                      parse_float=_parse_finite_float)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 500 and _SERVER_OUTPUT_PARSE_FAILURE.search(body):
+                # The server could not parse text the MODEL generated (e.g. broken
+                # tool-call markup). That is model behavior, not an outage, and
+                # excluding it would favor the precision that breaks format more.
+                failure = ModelOutputError(f"llama-server could not parse the model output: {body[:500]}",
+                                           kind="server_output_parse_failure",
+                                           payload={"server_error": body[:2000]})
+                failure.attempted_tool_call_count = 1
+                raise failure from exc
             raise InfrastructureError(f"llama-server HTTP {exc.code}: {body}", kind="http_error") from exc
         except urllib.error.URLError as exc:
             raise InfrastructureError(f"could not reach llama-server at {request.full_url}: {exc}", kind="connection_error") from exc
