@@ -83,6 +83,7 @@ def run_agent(
     *,
     condition: str,
     max_calls: int = 10,
+    replay_rejected_output: bool = True,
 ) -> dict[str, Any]:
     """Run one task and return a fully inspectable trace.
 
@@ -117,7 +118,7 @@ def run_agent(
         "internal_error": None,
         "termination_reason": "budget_exhausted",
         "metrics_version": METRICS_VERSION,
-        "agent_policy_version": AGENT_POLICY_VERSION,
+        "agent_policy_version": AGENT_POLICY_VERSION if replay_rejected_output else "single-action-no-replay-v1",
         "finished": False,
         "final_answer": "",
         "schema_version": task.schema_version,
@@ -159,7 +160,7 @@ def run_agent(
             trace["events"].append(event)
             choices = exc.payload.get("choices") or []
             output = choices[0].get("message") if choices else {"error": exc.kind}
-            _output_feedback(messages, output, exc.kind)
+            _output_feedback(messages, output if replay_rejected_output else {'error': 'response rejected'}, exc.kind)
             continue
         except Exception as exc:  # keep a failed run available for analysis
             trace["runtime_error"] = f"{type(exc).__name__}: {exc}"
@@ -201,7 +202,7 @@ def run_agent(
         if action_type != "tool_call" or not isinstance(action.get("name"), str) or not action["name"]:
             event["error"] = "invalid_action"
             trace["events"].append(event)
-            _output_feedback(messages, action, "invalid_action")
+            _output_feedback(messages, action if replay_rejected_output else {'error': 'response rejected'}, "invalid_action")
             continue
 
         call_id = f"call_{step + 1}"
@@ -210,7 +211,7 @@ def run_agent(
         if not isinstance(arguments, dict):
             event["error"] = "invalid_arguments"
             trace["events"].append(event)
-            _output_feedback(messages, action, "invalid_arguments")
+            _output_feedback(messages, action if replay_rejected_output else {'error': 'response rejected'}, "invalid_arguments")
             continue
 
         messages.append(_assistant_tool_message(action, call_id))

@@ -86,7 +86,7 @@ def _normalize_arguments(value: Any) -> dict[str, Any]:
     raise ModelOutputError("unsupported tool arguments")
 
 
-def parse_chat_response(payload: dict[str, Any]) -> dict[str, Any]:
+def parse_chat_response(payload: dict[str, Any], *, accept_plain_call: bool = False) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise InfrastructureError("chat response is not an object", kind="response_protocol")
     choices = payload.get("choices")
@@ -143,6 +143,10 @@ def parse_chat_response(payload: dict[str, Any]) -> dict[str, Any]:
                 candidate = json.loads(stripped)
             except json.JSONDecodeError as exc:
                 raise ModelOutputError("JSON action is not valid JSON", kind="invalid_action", payload=payload) from exc
+            if (accept_plain_call and isinstance(candidate, dict) and set(candidate) == {"name", "arguments"}
+                    and isinstance(candidate["name"], str) and candidate["name"].strip()
+                    and isinstance(candidate["arguments"], dict)):
+                return {"type": "tool_call", "name": candidate["name"], "arguments": candidate["arguments"]}
             if isinstance(candidate, dict) and candidate.get("type") == "tool_call":
                 if not isinstance(candidate.get("name"), str) or not candidate["name"]:
                     raise ModelOutputError("JSON action needs a function name", kind="invalid_action", payload=payload)
@@ -205,6 +209,7 @@ class LlamaCppClient:
         max_tokens: int = 512,
         timeout_seconds: float = 120.0,
         cache_prompt: bool = False,
+        accept_plain_call: bool = False,
     ) -> None:
         if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
                 or not math.isfinite(temperature) or temperature < 0):
@@ -216,6 +221,7 @@ class LlamaCppClient:
         if (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float))
                 or not math.isfinite(timeout_seconds) or timeout_seconds <= 0):
             raise ValueError("timeout_seconds must be finite and positive")
+        self.accept_plain_call = accept_plain_call
         self.base_url = base_url.rstrip("/")
         self.endpoint = self.base_url + "/v1/chat/completions"
         self.model = model
@@ -291,7 +297,7 @@ class LlamaCppClient:
             method="POST",
         )
         payload = self._request_json(request)
-        action = parse_chat_response(payload)
+        action = parse_chat_response(payload, accept_plain_call=self.accept_plain_call)
         return {
             "action": action,
             "usage": payload.get("usage") or {},
