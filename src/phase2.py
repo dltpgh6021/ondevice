@@ -9,7 +9,7 @@ from .tasks import Task, stable_hash
 HORIZONS = (1, 3, 5)
 CONDITIONS = ("free", "normal_restart", "error_restart")
 SIZES = {"dev": 12, "main": 60}
-PROTOCOL = "dependent-purchases-v3"
+PROTOCOL = "dependent-purchases-v4"
 
 # (number affordable, quality ranks in ascending price order). Each six-case
 # block contains every profile, independently shuffled for each order line.
@@ -18,12 +18,17 @@ PROFILES = (
     (2, (1, 0, 2)), (2, (0, 1, 2)), (1, (0, 1, 2)),
 )
 TOOLS = [{"type": "function", "function": {
-    "name": "save_offer", "description": "Save or replace one offer for a line. Changing an earlier bundle line clears dependent later lines.",
+    "name": "save_offer", "description": (
+        "Select exactly one offer for a line. Saving again on the same line replaces its previous selection; "
+        "it does not add another item. Changing an earlier bundle line clears dependent later lines. "
+        "An ok result means the update was applied, not that the selection satisfies the user's rule."),
     "parameters": {"type": "object", "properties": {"line": {"type": "integer"}, "offer": {"type": "string"}},
                    "required": ["line", "offer"], "additionalProperties": False}}}]
 
 
-TOOLS.append({"type":"function","function":{"name":"inspect_order","description":"Read the current saved selections and available offers.",
+TOOLS.append({"type":"function","function":{"name":"inspect_order","description":(
+    "Read required line numbers, unsaved line numbers, saved selections and available offers. "
+    "An empty unsaved_lines list means every line has a selection, not that those selections satisfy the user's rule."),
               "parameters":{"type":"object","properties":{},"additionalProperties":False}}})
 
 
@@ -50,11 +55,18 @@ class PurchaseChain:
         self.condition = condition
         self.start = 1 if condition == "free" else 0
         self.saved = {}
-        self.query = (f"Complete the order. On every line save the highest-rated offer within that line's budget. "
-                      f"Complete bundle lines 1 through {horizon} in order. " +
-                      ("Line 0 is a separate accessory and must also satisfy the same rule. " if self.start == 0 else "") +
-                      "You may revise saved lines. Each following bundle line depends on the preceding choice. "
-                      "When all required lines are correct, finish with a short final answer.")
+        bundle_lines = list(range(1, horizon + 1))
+        self.query = (
+            "Complete the order with exactly one selected offer per required line. "
+            "On each line choose the highest-rated offer whose price is at or below that line's budget. "
+            f"The required bundle line numbers are {bundle_lines}. Complete them in order, including line {horizon}. " +
+            ("Line 0 is an additional accessory, not one of the bundle lines. It must also satisfy the same selection rule. "
+             if self.start == 0 else "") +
+            "Review saved selections using their prices, ratings and budgets. Keep selections that already satisfy the rule; "
+            "replace a selection if it does not. Saving another offer on the same line replaces the previous one. "
+            "Changing a bundle selection clears dependent later selections, which must then be made again. "
+            "The order state lists unsaved_lines; these lines still need a selection. "
+            "When every required line has a selection satisfying the rule, stop calling tools and finish with a short final answer.")
 
     def menu(self, line, *, canonical=False):
         parent = self.saved.get(line - 1, "") if line > 1 else ""
@@ -90,8 +102,20 @@ class PurchaseChain:
         return max((o for o in menu["offers"] if o["price"] <= menu["budget"]), key=lambda o:o["rating"])["offer"]
 
     def view(self):
-        lines = [i for i in range(self.start, self.h + 1) if i <= 1 or i-1 in self.saved]
-        return {"saved": dict(self.saved), "lines": [self.menu(i) for i in lines]}
+        required = list(range(self.start, self.h + 1))
+        lines = []
+        for line in required:
+            if line > 1 and line - 1 not in self.saved:
+                continue
+            menu = self.menu(line)
+            # Expose only existing menu facts. Do not label a selection as correct
+            # or affordable, sort the candidates, or include the hidden answer.
+            menu["saved_offer"] = next(
+                (dict(offer) for offer in menu["offers"] if offer["offer"] == self.saved.get(line)), None)
+            lines.append(menu)
+        return {"required_lines": required,
+                "unsaved_lines": [line for line in required if line not in self.saved],
+                "saved": dict(self.saved), "lines": lines}
 
     def snapshot(self):
         return copy.deepcopy(self.saved)

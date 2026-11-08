@@ -71,6 +71,50 @@ class Phase2Tests(unittest.TestCase):
         self.assertNotIn(2,e.saved)
         self.assertFalse(e.execute("save_offer",{"line":2,"offer":child})["ok"])
 
+    def test_progress_exposes_missing_lines_without_grading_selections(self):
+        for condition in CONDITIONS:
+            env = PurchaseChain("dev", 0, 3, condition)
+            env.prepare_condition(env.task(), condition)
+            view = env.view()
+            self.assertEqual(view["required_lines"], [1, 2, 3] if condition == "free" else [0, 1, 2, 3])
+            self.assertEqual(view["unsaved_lines"], [1, 2, 3])
+            self.assertEqual([menu["line"] for menu in view["lines"]], [1] if condition == "free" else [0, 1])
+            for menu in view["lines"]:
+                self.assertEqual(set(menu), {"line", "budget", "offers", "saved_offer"})
+                self.assertEqual(menu["offers"], env.menu(menu["line"])["offers"])
+                expected = next((o for o in menu["offers"] if o["offer"] == env.saved.get(menu["line"])), None)
+                self.assertEqual(menu["saved_offer"], expected)
+            # Even wrong choices remove a line from unsaved_lines. Empty means
+            # selected, not successful, and the action is still allowed.
+            for line in range(1, 4):
+                wrong = next(o["offer"] for o in env.menu(line)["offers"] if o["offer"] != env.best(line))
+                self.assertTrue(env.execute("save_offer", {"line": line, "offer": wrong})["ok"])
+            self.assertEqual(env.view()["unsaved_lines"], [])
+            self.assertFalse(env.check_success())
+
+    def test_progress_restores_unsaved_children_after_parent_replacement(self):
+        env = PurchaseChain("dev", 0, 3, "free")
+        for line in range(1, 4):
+            env.execute("save_offer", {"line": line, "offer": env.best(line)})
+        wrong = next(o["offer"] for o in env.menu(1)["offers"] if o["offer"] != env.saved[1])
+        view = env.execute("save_offer", {"line": 1, "offer": wrong})
+        self.assertEqual(view["unsaved_lines"], [2, 3])
+        self.assertEqual([menu["line"] for menu in view["lines"]], [1, 2])
+        self.assertIsNone(view["lines"][1]["saved_offer"])
+
+    def test_correct_state_does_not_automatically_end_or_prevent_rewrites(self):
+        env = PurchaseChain("dev", 0, 1, "free")
+        gold = env.best(1)
+        wrong = next(o["offer"] for o in env.menu(1)["offers"] if o["offer"] != gold)
+        actions = [{"type": "tool_call", "name": "save_offer", "arguments": {"line": 1, "offer": offer}}
+                   for offer in (gold, wrong)]
+        trace = run_agent(env.task(), ScriptedClient(actions), env, condition="free", max_calls=6)
+        result = score(env, trace)
+        self.assertEqual(result["executed_calls"], 2)
+        self.assertEqual(result["first_goal_turn"], 1)
+        self.assertTrue(result["goal_lost_at_end"])
+        self.assertFalse(result["success"])
+
     def test_plain_call_scope(self):
         def payload(text):
             return {"choices":[{"message":{"content":text}}]}
