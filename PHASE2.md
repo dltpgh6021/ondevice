@@ -2,6 +2,8 @@
 
 2차 실험 브랜치는 `experiment/phase2-position-controls`다. 1차 로그 재분석까지 포함한 `fix/review-followups`의 `691eea4`에서 분기했다. 이 커밋에는 `main`, `fix/experiment-conditions-v2`, `fix/recovery-fixture-design`의 변경이 모두 들어 있다. 2차 실행에는 `scripts/phase2.py`를, 1차 재현에는 `scripts/run_experiment.py`를 사용한다.
 
+4B FP16 파일럿 이후의 선택·회복 원인 진단은 [PHASE2_DIAGNOSTICS.md](PHASE2_DIAGNOSTICS.md)를 따른다. 기존 v4 과제와 본실험 통과 기준을 유지한 채 별도 로그로 실행한다.
+
 팀원이 기존 저장소에서 시작한다면 브랜치가 GitHub에 공유된 뒤 아래 두 줄을 차례로 실행한다.
 
 ```shell
