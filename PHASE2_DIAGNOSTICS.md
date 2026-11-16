@@ -81,3 +81,47 @@ cat "$DIAG_DIR/summary.json"
 ZIP에는 `diagnostics.jsonl`(전체 trace), `summary.json`, `metadata.json`(원본 로그·모델·코드 해시와 실제 서버 명령), `settings.json`, `preflight.json`이 담긴다. results는 Git에 올리지 않고 별도로 공유한다.
 
 진단에서 개선된 입력 구성이 확인되면 변경 이유와 범위를 고정하고 새 버전으로 전체 개발 파일럿 180회를 실행한다. h1에서 회복이 개선됐다는 사실만으로 h3·h5 통과를 가정하지 않는다. 정상·오류 재개 양쪽에 공통 지시를 적용하고 본실험 기준은 유지한다. 기준 성능을 확보한 뒤 선정한 동일 FP16에서 Q8_0·Q4_K_M을 직접 생성하고 정밀도 비교로 넘어간다. 모든 진단에서 실패가 지속되면 모델이나 평가 설계를 재검토한다. 문턱이나 정답 채점을 결과에 맞춰 바꾸지 않는다.
+
+## h3에서 질문 표현 비교
+
+4B FP16의 기존 h3 로그에서는 정상·오류 24회 모두 추가 조회 없이 1→2→3번을 저장했다. 따라서 단계 진행과 저장된 오류의 수정에 대한 지표를 따로 본다. 같은 개발 시나리오 12개에서 세 문구를 정상·오류에 모두 실행하므로 h3 한 번에 총 72회다.
+
+| 입력 | 비교하는 내용 |
+|---|---|
+| `original` | 기존 사용자의 질문을 같은 실행에서 다시 평가한다. |
+| `next_offer` | 바로 다음 묶음 항목의 예산과 후보가 저장 결과에 표시된다는 문장 하나를 더한다. |
+| `review_all` | 위 문장을 포함하고 필수 항목 전체, 0번의 독립성, 도구를 통한 수정과 종료 조건을 더 명확히 쓴다. |
+
+같은 파일럿의 FP16, 후보, 초기 저장 선택, 과거 도구 기록, 응답 상한, 채점과 서버 설정을 사용한다. `review_all`은 여러 문장을 함께 교체하므로 비교 결과는 전체 표현의 효과로 해석한다. 어떤 입력에도 현재 저장이 잘못됐는지나 정답 후보가 무엇인지를 별도로 알려주지 않는다.
+
+GitHub 업데이트를 반영한 원격 프로젝트 루트에서 실행한다. 원본 경로는 완료한 4B 파일럿 180회 폴더다.
+
+```bash
+cd "$HOME/ondevice-phase2"
+BASELINE_DIR="$(cat results/phase2/latest_v4_4b_dev.txt)"
+.venv/bin/python scripts/check_phase2_prompt.py --horizon 3 --baseline-log "$BASELINE_DIR/dev.jsonl" --dry-run
+```
+
+출력에서 `"trials": 72`를 확인한다. dry-run은 로그와 실행 계획만 점검한다. 다음으로 위의 ‘실제 실행’ 절에 따라 원본과 같은 4B FP16 서버를 확인한다. 아래 `SERVER_PID`는 최근에 서버를 다시 시작한 경우 현재 PID로 지정한다. `/health` 응답이 `{"status":"ok"}`일 때 추론을 시작한다.
+
+```bash
+MODEL_FILE="$PWD/models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf"
+SERVER_PID="$(cat "$BASELINE_DIR/server.pid")"
+kill -0 "$SERVER_PID" && curl -fsS --max-time 10 http://127.0.0.1:18080/health
+```
+
+```bash
+PROMPT_DIR="$BASELINE_DIR/prompt_h3_$(date +%Y%m%d_%H%M%S)"
+.venv/bin/python -u scripts/check_phase2_prompt.py --horizon 3 --baseline-log "$BASELINE_DIR/dev.jsonl" --model-path "$MODEL_FILE" --server-pid "$SERVER_PID" --output-dir "$PROMPT_DIR"
+```
+
+직전 4B h3의 평균 약 6.2초를 적용하면 72회 추론은 약 7분 25초다. 응답 길이, 해시 확인과 워밍업을 고려해 서버 준비 후 약 8~12분을 잡는다. 추론이 시작되면 `[1/72]` 형식으로 진행 상황이 나온다. 모델이 과제를 실패해도 서버·코드 오류가 없으면 다음 실행을 계속한다.
+
+```bash
+cat "$PROMPT_DIR/summary.json"
+.venv/bin/python -m zipfile -c "$HOME/phase2_h3_prompt_check.zip" "$PROMPT_DIR"
+```
+
+- 오류 조건의 `accessory_correct_at_end`가 주어진 오류를 최종적으로 수정한 실행 수다. `successes`는 그것과 별도로 주문 전체를 완료한 실행 수다. 정상 조건의 `accessory_ever_damaged_episodes`와 `successes`도 함께 확인한다.
+- `bundle_all_reached`는 모든 묶음 항목을 한 번 이상 저장한 실행 수다. `direct_next_bundle_saves`는 처음 저장한 항목의 바로 다음 응답에서 다음 항목을 처음 저장한 횟수다. 0번을 먼저 또는 중간에 수정하는 것도 유효한 전략이므로 이 값을 성공 조건으로 사용하지 않는다. `first_bundle_saves_correct`와 조회 수를 함께 읽는다.
+- `paired_vs_original`은 같은 시나리오가 문구에 따라 성공 또는 실패로 바뀐 수를 보여준다. 12개 시나리오의 개발용 비교로 해석한다. h3에서 검토할 개선이 보이면 `--horizon 5`와 새 출력 폴더로 긴 조건을 확인할 수 있다. 같은 72회 구성의 추론 예상 시간은 약 11분 30초이며, 준비와 응답 편차를 포함하면 약 12~18분이다.
