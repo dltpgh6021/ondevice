@@ -2,7 +2,7 @@
 
 2차 실험 브랜치는 `experiment/phase2-position-controls`다. 1차 로그 재분석까지 포함한 `fix/review-followups`의 `691eea4`에서 분기했다. 이 커밋에는 `main`, `fix/experiment-conditions-v2`, `fix/recovery-fixture-design`의 변경이 모두 들어 있다. 2차 실행에는 `scripts/phase2.py`를, 1차 재현에는 `scripts/run_experiment.py`를 사용한다.
 
-4B FP16 파일럿 이후의 선택·회복 원인 진단은 [PHASE2_DIAGNOSTICS.md](PHASE2_DIAGNOSTICS.md)를 따른다. 기존 v4 과제와 본실험 통과 기준을 유지한 채 별도 로그로 실행한다.
+현재 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. 팀원에게 부탁할 작업은 h3 질문 문구 비교 72회이며, 환경·모델·서버와 실행 명령은 [README.md](README.md)에 있다. 이전 132회 입력 진단과 상세 지표는 [PHASE2_DIAGNOSTICS.md](PHASE2_DIAGNOSTICS.md)를 따른다.
 
 팀원이 기존 저장소에서 시작한다면 브랜치가 GitHub에 공유된 뒤 아래 두 줄을 차례로 실행한다.
 
@@ -41,26 +41,26 @@ v3 파일럿에서 정답을 저장한 뒤 다시 바꾸는 행동과 마지막 
 
    예상 결과는 테스트 `OK`와 `dependent-purchases-v4`다. Windows CMD/macOS에서는 가상환경을 활성화한 뒤 `.venv/bin/python`을 `python`으로 바꾼다.
 
-2. **FP16 기준 성능 확인:** 기존 1.7B 모델로 v4 개발용 180회를 먼저 실행해 변경 전후를 확인하고, 다음 후보 모델의 FP16도 동일한 v4 과제로 비교한다. 각 모델은 별도 결과 폴더와 설정 잠금을 사용하고, 공통 디코딩·서버·장비 설정을 맞춘다. 모델 고유 chat template은 해당 모델 것을 사용하고 기록한다. 새 모델은 FP16 로드와 메모리 여유를 확인한 뒤 실행한다. 모델 변경만으로 통과한다고 가정하지 않는다.
-3. **선정 후 정밀도 비교:** 개발용 결과와 오류 양상을 검토하고 기준 성능을 확보한 모델을 선정한다. 선정한 동일 FP16에서 Q8_0·Q4_K_M을 직접 생성하고 manifest를 기록한 후 본실험으로 넘어간다. 기존 1.7B를 유지하면 검증된 모델 파일을 재사용할 수 있다. 본실험 60개 시나리오 결과를 모델 선정에 사용하지 않는다.
+2. **FP16 기준 성능 확인:** 1.7B 파일럿 이후 Qwen3-4B-Instruct-2507 FP16으로 개발용 180회와 입력 진단 132회를 완료했다. 현재는 h3에서 원문·다음 후보 안내·전체 검토 문구를 비교한다. 새 장비에서는 그 장비의 FP16 개발 파일럿과 설정 잠금을 먼저 생성한다. 모델 고유 chat template과 실제 서버 설정을 기록한다.
+3. **선정 후 정밀도 비교:** 개발용 결과와 오류 양상을 검토하고 기준 성능을 확보한 모델·설정을 선정한다. 같은 FP16에서 Q8_0·Q4_K_M을 직접 생성하고 manifest를 기록한 후 본실험으로 넘어간다. 본실험 60개 시나리오는 모델·문구 선정 후 평가에 사용한다.
 
-현재는 1번부터 순서대로 진행한다. 기존 야간 스크립트는 파일럿 통과 시 본실험까지 이어질 수 있으므로 모델 선정 중에는 아래의 개발용 실행 명령만 사용한다. 새 파일럿에는 새 `--output`과 `--settings-lock` 경로를 지정한다. 예를 들어 `results/phase2/v4_1p7b_01/dev.jsonl`과 같은 폴더의 `settings.json`을 쓴다. 기준 미달로 종료돼도 완성된 180회 로그는 보존되며, 아래 `--pilot` 분석 명령으로 검토할 수 있다.
+지금 실행할 진단은 README 7절을 따른다. 새 파일럿에는 새 `--output`과 `--settings-lock` 경로를 지정한다. 예를 들어 `results/phase2/4b-dev/dev.jsonl`과 같은 폴더의 `settings.json`을 쓴다. 기준 미달로 종료돼도 완성된 180회 로그는 보존되며, 아래 `--pilot` 분석 명령으로 검토할 수 있다.
 
 ## 먼저 FP16 파일럿
 
 개발용 기본 실행은 12개 × 세 길이 × 세 조건으로 108회다. h1의 세 조건에서 두 순서를 더 실행해 FP16 파일럿은 총 180회다. **팀 검토용 운영 기준**은 각 길이의 자유 수행과 정상 재개에서 각각 12개 중 8개 이상 성공하는 것이다. 비교 기준으로 쓸 수 있는지 확인하는 문턱이며 통계적 유의성을 뜻하지 않는다. 오류 재개에서도 모든 길이에서 최소 4/12 과제가 최종 성공해야 한다. h1 자유 수행은 정답을 첫째·둘째·셋째 칸에 놓은 경우에도 각각 8/12 이상 성공해야 한다. 문턱은 파일럿 전에 정하는 운영 기준이다. 기준 미달로 과제를 바꾸면 변경 내용과 이전 파일럿도 함께 남긴다. 형식 반려, 잘못된 선택, 이른 종료를 검토한 후 본실험을 결정한다. 정답률 기준을 바꾸면 파일럿 전에 결정하여 사유를 기록한다.
 
-프로젝트 루트에서 실행한다. Windows CMD, WSL, macOS에서 각 명령은 한 줄이다. 아래 models 경로는 보유한 GGUF 위치로 바꿔도 된다. 직접 양자화할 때 만든 manifest.json을 GGUF 옆에 둔다. 별도 위치라면 모든 실행에 --manifest 경로를 준다. --precision과 파일 해시는 manifest의 F16·Q8_0·Q4_K_M에 맞아야 하며, 본실험의 원본 해시는 FP16 파일럿과 같아야 한다. 실행기에서 서버가 보고하는 GGUF 파일에 접근할 수 있어야 한다. 서버는 모델을 바꿀 때마다 종료하고 같은 설정으로 재시작한다. 장비별 설치·GPU 오프로딩은 README의 서버 안내를 따른다.
+프로젝트 루트에서 실행한다. OS별 준비는 README를 따른다. manifest.json을 GGUF 옆에 두고 별도 위치라면 실행에 --manifest 경로를 준다. --precision과 파일 해시는 manifest의 F16·Q8_0·Q4_K_M에 맞아야 하며, 본실험의 원본 해시는 FP16 파일럿과 같아야 한다. 실행기에서 서버가 보고하는 GGUF 파일에 접근할 수 있어야 한다. 모델을 교체할 때 해당 모델의 서버를 같은 옵션으로 시작한다.
 
 ```
 python -m unittest discover -s tests -p "test_phase2*.py" -v
-llama-server -m models/Qwen3-1.7B-f16.gguf --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --reasoning off
+llama-server -m "$PWD/models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf" --alias local --jinja --reasoning off --host 127.0.0.1 --port 18080 --ctx-size 8192 --parallel 1 --batch-size 512 --ubatch-size 128 --cache-type-k f16 --cache-type-v f16 --flash-attn off --n-gpu-layers 99
 ```
 
 다른 터미널에서 아래 명령을 실행한다. 팀 장비에서 RAM·GPU 메모리도 측정하려면 --server-pid에 현재 서버 PID, --gpu-index에 장치 번호를 추가한다. GPU 값은 다른 프로세스까지 포함한 장치 사용량이다. FP16·Q8·Q4 모두 같은 장비와 오프로딩 정책을 사용한다.
 
 ```
-python scripts/phase2.py --split dev --precision FP16 --model-path models/Qwen3-1.7B-f16.gguf --output results/phase2/dev.jsonl
+python scripts/phase2.py --split dev --precision FP16 --model-path models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf --settings-lock results/phase2/4b-dev/settings.json --output results/phase2/4b-dev/dev.jsonl
 ```
 
 기본 설정은 thinking off, temperature 0, seed 42, 응답당 512토큰, 워밍업 2회다. 개발 단계에서 출력 한도를 시험하려면 --max-tokens와 별도의 --settings-lock, --output을 지정한다. 파일럿이 기준 미달이면 dev 로그를 검토한다. 구현이나 추론 설정을 수정하면 새 출력 경로로 파일럿을 다시 실행한다.
@@ -70,9 +70,9 @@ python scripts/phase2.py --split dev --precision FP16 --model-path models/Qwen3-
 본실험은 60개 시나리오에 모델당 기본 540회, 순서 대조 72회를 더해 총 612회다. 세 정밀도를 합치면 1,836회다. FP16 개발 로그의 완전성, 기준 통과, 프로토콜 해시와 설정 일치를 확인한 후 시작한다. precision 라벨에는 동일 원본에서 직접 생성한 모델 파일을 대응시킨다. 서버의 모델 경로와 파일 이름을 확인하고 지정한 파일의 SHA256을 저장한다. 실험 장비에 모델 파일을 두고 서버와 실행기를 함께 실행한다.
 
 ```
-python scripts/phase2.py --split main --precision FP16 --model-path models/Qwen3-1.7B-f16.gguf --dev-log results/phase2/dev.jsonl --output results/phase2/FP16.jsonl
-python scripts/phase2.py --split main --precision Q8 --model-path models/Qwen3-1.7B-f16-Q8_0.gguf --dev-log results/phase2/dev.jsonl --output results/phase2/Q8.jsonl
-python scripts/phase2.py --split main --precision Q4 --model-path models/Qwen3-1.7B-f16-Q4_K_M.gguf --dev-log results/phase2/dev.jsonl --output results/phase2/Q4.jsonl
+python scripts/phase2.py --split main --precision FP16 --model-path models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf --dev-log results/phase2/4b-dev/dev.jsonl --settings-lock results/phase2/4b-dev/settings.json --output results/phase2/FP16.jsonl
+python scripts/phase2.py --split main --precision Q8 --model-path models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16-Q8_0.gguf --dev-log results/phase2/4b-dev/dev.jsonl --settings-lock results/phase2/4b-dev/settings.json --output results/phase2/Q8.jsonl
+python scripts/phase2.py --split main --precision Q4 --model-path models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16-Q4_K_M.gguf --dev-log results/phase2/4b-dev/dev.jsonl --settings-lock results/phase2/4b-dev/settings.json --output results/phase2/Q4.jsonl
 python scripts/analyze_phase2.py results/phase2/FP16.jsonl results/phase2/Q8.jsonl results/phase2/Q4.jsonl --output results/phase2/comparison.json
 ```
 
@@ -95,7 +95,7 @@ dependent-purchases-v4에서 h1은 원래 목록과 이를 한 칸, 두 칸 돌�
 파일럿 종료 후 아래 명령으로 진단 결과를 따로 저장할 수 있다. 최소 성공률에 미달한 완전한 파일럿도 검사할 수 있다.
 
 ```
-python scripts/analyze_phase2.py --pilot results/phase2/dev.jsonl --output results/phase2/pilot_review.json
+python scripts/analyze_phase2.py --pilot results/phase2/4b-dev/dev.jsonl --output results/phase2/pilot_review.json
 ```
 
 - position_audit의 by_gold_slot에서 세 칸 각각의 첫 저장 정답 수, 저장을 건너뛴 횟수, 최종 성공 수를 함께 읽는다. 정상 재개에서는 이미 맞는 부속품을 다시 저장하지 않는 것이 올바를 수 있다. 같은 상품을 일관되게 골랐는지와 매번 첫 칸을 골랐는지의 분모는 세 순서 모두 저장한 시나리오 수다. 최종 성공 여부가 순서에 따라 뒤집힌 횟수는 전체 대조 시나리오 기준이다. 재개 조건에서는 저장돼 있던 후보의 바로 다음 칸을 처음 재저장한 횟수도 센다. 분모는 첫 재저장이 있었고 기존 후보가 마지막 칸이 아니었던 실행이다.
