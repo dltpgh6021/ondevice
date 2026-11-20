@@ -1,5 +1,7 @@
 # 4B FP16 개발용 진단 실행
 
+입력 진단과 h3 문구 비교 이후의 공식 원본·GGUF 실행 비교는 [PHASE2_BACKEND_CHECK.md](PHASE2_BACKEND_CHECK.md)를 따른다.
+
 현재 목적은 긴 과제의 선택 오류와 저장된 오류를 수정하지 않는 행동을 분리해 확인하는 것이다. Qwen3-4B-Instruct-2507 FP16과 기존 개발 시나리오 12개를 사용한다. `dependent-purchases-v4`의 과제 생성·채점·본실험 통과 기준은 변경하지 않는다. 진단 버전은 `phase2-diagnostic-v1`이며 본실험 로그와 합치지 않는다.
 
 ## 무엇을 실행하는가

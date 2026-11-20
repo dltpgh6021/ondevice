@@ -2,7 +2,7 @@
 
 2차 실험 브랜치는 `experiment/phase2-position-controls`다. 1차 로그 재분석까지 포함한 `fix/review-followups`의 `691eea4`에서 분기했다. 이 커밋에는 `main`, `fix/experiment-conditions-v2`, `fix/recovery-fixture-design`의 변경이 모두 들어 있다. 2차 실행에는 `scripts/phase2.py`를, 1차 재현에는 `scripts/run_experiment.py`를 사용한다.
 
-현재 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. 팀원에게 부탁할 작업은 h3 질문 문구 비교 72회이며, 환경·모델·서버와 실행 명령은 [README.md](README.md)에 있다. 이전 132회 입력 진단과 상세 지표는 [PHASE2_DIAGNOSTICS.md](PHASE2_DIAGNOSTICS.md)를 따른다.
+현재 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. h3 질문 문구 비교 72회 이후 공식 원본과 GGUF FP16의 소규모 비교를 준비했다. 현재 실행은 [PHASE2_BACKEND_CHECK.md](PHASE2_BACKEND_CHECK.md)를 따른다. 환경·모델·서버 준비는 [README.md](README.md), 이전 진단과 지표는 [PHASE2_DIAGNOSTICS.md](PHASE2_DIAGNOSTICS.md)에 있다.
 
 팀원이 기존 저장소에서 시작한다면 브랜치가 GitHub에 공유된 뒤 아래 두 줄을 차례로 실행한다.
 
@@ -41,10 +41,10 @@ v3 파일럿에서 정답을 저장한 뒤 다시 바꾸는 행동과 마지막 
 
    예상 결과는 테스트 `OK`와 `dependent-purchases-v4`다. Windows CMD/macOS에서는 가상환경을 활성화한 뒤 `.venv/bin/python`을 `python`으로 바꾼다.
 
-2. **FP16 기준 성능 확인:** 1.7B 파일럿 이후 Qwen3-4B-Instruct-2507 FP16으로 개발용 180회와 입력 진단 132회를 완료했다. 현재는 h3에서 원문·다음 후보 안내·전체 검토 문구를 비교한다. 새 장비에서는 그 장비의 FP16 개발 파일럿과 설정 잠금을 먼저 생성한다. 모델 고유 chat template과 실제 서버 설정을 기록한다.
+2. **FP16 기준 성능 확인:** 1.7B 파일럿 이후 Qwen3-4B-Instruct-2507 FP16으로 개발용 180회, 입력 진단 132회와 h3 문구 비교 72회를 완료했다. 문구 비교에서 회복이 개선되지 않아 공식 원본과 GGUF를 같은 소수 입력에서 비교한다. 새 장비에서는 그 장비의 FP16 개발 파일럿과 설정 잠금을 먼저 생성한다. 모델 고유 chat template과 실제 서버 설정을 기록한다.
 3. **선정 후 정밀도 비교:** 개발용 결과와 오류 양상을 검토하고 기준 성능을 확보한 모델·설정을 선정한다. 같은 FP16에서 Q8_0·Q4_K_M을 직접 생성하고 manifest를 기록한 후 본실험으로 넘어간다. 본실험 60개 시나리오는 모델·문구 선정 후 평가에 사용한다.
 
-지금 실행할 진단은 README 7절을 따른다. 새 파일럿에는 새 `--output`과 `--settings-lock` 경로를 지정한다. 예를 들어 `results/phase2/4b-dev/dev.jsonl`과 같은 폴더의 `settings.json`을 쓴다. 기준 미달로 종료돼도 완성된 180회 로그는 보존되며, 아래 `--pilot` 분석 명령으로 검토할 수 있다.
+지금 실행할 진단은 PHASE2_BACKEND_CHECK.md를 따른다. 새 파일럿에는 새 `--output`과 `--settings-lock` 경로를 지정한다. 예를 들어 `results/phase2/4b-dev/dev.jsonl`과 같은 폴더의 `settings.json`을 쓴다. 기준 미달로 종료돼도 완성된 180회 로그는 보존되며, 아래 `--pilot` 분석 명령으로 검토할 수 있다.
 
 ## 먼저 FP16 파일럿
 

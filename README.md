@@ -1,15 +1,15 @@
 # Quantized Agent Stability
 
-현재 브랜치는 **`experiment/phase2-position-controls`**, 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. 팀원이 지금 수행할 작업은 **h3 회복 과제의 질문 문구 비교 72회**다. 마지막 수정일은 2026-11-19다.
+현재 브랜치는 **`experiment/phase2-position-controls`**, 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. 현재 작업은 **공식 원본과 GGUF FP16의 소규모 실행 비교 12회**다. 설치·실행 명령은 [PHASE2_BACKEND_CHECK.md](PHASE2_BACKEND_CHECK.md)를 따른다. 마지막 수정일은 2026-11-20이다.
 
-연구 목표는 같은 원본에서 만든 FP16·Q8_0·Q4_K_M Agent의 오류 발생, 오류 회복과 효율성을 비교하는 것이다. 현재는 양자화 비교에 앞서 FP16 기준 성능과 과제 설명을 점검하고 있다. 기존 4B 파일럿에서 h3·h5 수행과 오류 회복 성능이 낮았고, 입력 방식 진단 132회에서도 회복이 개선되지 않아 질문 문구 비교를 추가했다.
+연구 목표는 같은 원본에서 만든 FP16·Q8_0·Q4_K_M Agent의 오류 발생, 오류 회복과 효율성을 비교하는 것이다. FP16 파일럿과 입력 진단 132회 이후 h3 문구 비교 72회를 완료했으며, 세 문구 모두 정상 성공 3/12·오류 성공 0/12였다. 같은 소수 과제를 공식 원본에서도 실행해 현재 모델과 실행 구성을 점검한다. 아래 본문은 환경 준비와 완료한 h3 문구 비교의 실행법을 포함한다.
 
 | 항목 | 현재 실행 기준 |
 |---|---|
 | 모델 | Qwen3-4B-Instruct-2507, F16 GGUF |
 | 모델 파일 | `models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf` |
-| 현재 명령 | `python scripts/check_phase2_prompt.py` |
-| 실행 수 | h3에서 개발 시나리오 12개 × 정상/오류 2조건 × 문구 3종 = 72회 |
+| 현재 명령 | `python scripts/compare_phase2_backends.py` |
+| 실행 수 | h3에서 개발 시나리오 3개 × 정상/오류 2조건 × 실행 경로 2종 = 12회 |
 | 과제 | `dependent-purchases-v4`, 모델 입력은 영어 |
 | horizon | 같은 오류를 수정하면서 완료할 남은 묶음 항목 수 1·3·5 |
 | 추론 설정 | thinking off, temperature 0, seed 42, 응답당 512토큰, 워밍업 2회 |
@@ -20,6 +20,8 @@
 모델 원본 설명과 사용하는 GGUF 배포 위치는 아래에서 확인할 수 있다. 다운로드에는 기존 파일럿과 같은 고정 리비전을 사용한다. [Qwen 모델 설명](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507), [사용한 F16 GGUF](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/blob/3325f405027441dd81d27cc87479e6d60656fc92/Qwen3-4B-Instruct-2507-F16.gguf)
 
 ## 실행 경로 선택
+
+지금 진행할 공식 원본·GGUF 비교는 [전용 실행 안내](PHASE2_BACKEND_CHECK.md)의 1~5절을 따른다. GGUF 서버를 종료한 뒤 공식 원본을 로드한다.
 
 - **기존 원격 PC**라면 1절에서 코드를 업데이트하고 3절의 파일 존재 여부를 확인한 뒤 5절에서 기존 파일럿 폴더와 서버를 확인한다. 이후 7절을 실행한다.
 - **새 PC**라면 1~6절에서 환경·모델·그 장비의 FP16 개발 파일럿을 준비한 뒤 7절을 실행한다. 기존 설정 잠금에는 장비·서버 빌드·템플릿 정보가 들어 있다.
@@ -66,7 +68,7 @@ git log -1 --oneline
 python -m unittest discover -s tests -p "test_phase2*.py" -v
 ```
 
-현재 예상 결과는 **25개 테스트와 `OK`**다. `psutil`은 서버 PID와 실행 옵션 확인에도 사용한다. 이후 명령은 프로젝트 루트와 활성화된 가상환경에서 실행한다. 창을 새로 열면 `cd`와 가상환경 활성화를 다시 한다.
+현재 예상 결과는 **33개 테스트와 `OK`**다. `psutil`은 서버 PID와 실행 옵션 확인에도 사용한다. 이후 명령은 프로젝트 루트와 활성화된 가상환경에서 실행한다. 창을 새로 열면 `cd`와 가상환경 활성화를 다시 한다.
 
 ## 2. NVIDIA GPU용 llama.cpp 준비
 
