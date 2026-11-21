@@ -1,19 +1,19 @@
 # Quantized Agent Stability
 
-현재 브랜치는 **`experiment/phase2-position-controls`**, 기준 모델은 **Qwen3-4B-Instruct-2507 FP16**이다. 현재 작업은 **공식 원본과 GGUF FP16의 소규모 실행 비교 12회**다. 설치·실행 명령은 [PHASE2_BACKEND_CHECK.md](PHASE2_BACKEND_CHECK.md)를 따른다. 마지막 수정일은 2026-11-20이다.
+현재 브랜치는 **`experiment/phase2-position-controls`**이며, 현재 작업은 **IBM Granite-4.0-Micro FP16 후보의 소규모 비교 6회**다. 원격 WSL 실행은 **[PHASE2_GRANITE.md](PHASE2_GRANITE.md)의 0~6절**을 따른다. 이전 Qwen3-4B-Instruct-2507은 비교 기준으로 보존하며, 최종 양자화 기준 모델은 후보 평가 후 결정한다. 마지막 수정일은 2026-11-21이다.
 
-연구 목표는 같은 원본에서 만든 FP16·Q8_0·Q4_K_M Agent의 오류 발생, 오류 회복과 효율성을 비교하는 것이다. FP16 파일럿과 입력 진단 132회 이후 h3 문구 비교 72회를 완료했으며, 세 문구 모두 정상 성공 3/12·오류 성공 0/12였다. 같은 소수 과제를 공식 원본에서도 실행해 현재 모델과 실행 구성을 점검한다. 아래 본문은 환경 준비와 완료한 h3 문구 비교의 실행법을 포함한다.
+연구 목표는 같은 원본에서 만든 FP16·Q8_0·Q4_K_M Agent의 오류 발생, 오류 회복과 효율성을 비교하는 것이다. Qwen FP16 파일럿과 입력 진단 132회 이후 h3 문구 비교 72회에서 세 문구 모두 정상 성공 3/12·오류 성공 0/12였다. 후속 공식 원본·GGUF 비교는 경로별 6회에서 정상 성공 1/3·오류 성공 0/3, 도구 선택도 같았다. 과제와 채점을 유지하고 다른 모델의 기준 성능을 확인한다. 아래 본문의 Qwen 설치·서버 명령은 이전 실험을 재현할 때 사용한다.
 
 | 항목 | 현재 실행 기준 |
 |---|---|
-| 모델 | Qwen3-4B-Instruct-2507, F16 GGUF |
-| 모델 파일 | `models/qwen3-4b-instruct-2507/Qwen3-4B-Instruct-2507-F16.gguf` |
-| 현재 명령 | `python scripts/compare_phase2_backends.py` |
-| 실행 수 | h3에서 개발 시나리오 3개 × 정상/오류 2조건 × 실행 경로 2종 = 12회 |
+| 모델 | 후보: IBM Granite-4.0-Micro, 공식 BF16 체크포인트를 FP16으로 로드 |
+| 모델 파일 | `models/granite-4.0-micro-hf/`에 고정 리비전의 공식 파일 다운로드 |
+| 현재 명령 | `.venv-hf/bin/python scripts/check_phase2_granite.py prepare / run / compare` |
+| 실행 수 | h3에서 개발 시나리오 3개 × 정상/오류 2조건 = Granite 6회. 이전 공식 Qwen 6회와 비교 |
 | 과제 | `dependent-purchases-v4`, 모델 입력은 영어 |
 | horizon | 같은 오류를 수정하면서 완료할 남은 묶음 항목 수 1·3·5 |
 | 추론 설정 | thinking off, temperature 0, seed 42, 응답당 512토큰, 워밍업 2회 |
-| 서버 | context 8192, parallel 1, batch 512, **ubatch 128**, KV f16/f16, flash-attn off |
+| 현재 실행 방식 | Transformers FP16·SDPA, 입력과 출력 합계 최대 8192토큰. llama-server 재빌드 불필요 |
 | 확인한 실험 장비 | Ubuntu 22.04 / WSL2, RTX 3080 10GB, RAM 약 15GB |
 | 4B 모델 준비 상태 | FP16과 manifest 준비 완료. Q8·Q4는 기준 모델·설정 확정 후 생성 |
 
@@ -21,7 +21,9 @@
 
 ## 실행 경로 선택
 
-지금 진행할 공식 원본·GGUF 비교는 [전용 실행 안내](PHASE2_BACKEND_CHECK.md)의 1~5절을 따른다. GGUF 서버를 종료한 뒤 공식 원본을 로드한다.
+지금은 **[Granite FP16 비교 안내](PHASE2_GRANITE.md)**를 따른다. 같은 PC의 이전 공식 Qwen 결과를 재사용한다. 기존 llama-server가 GPU에 남아 있다면 확인 후 종료하고 Granite를 로드한다. 코드·가이드 업로드는 사용자가 수행한다.
+
+이전 공식 원본·GGUF 비교를 재현할 때는 [전용 실행 안내](PHASE2_BACKEND_CHECK.md)의 1~5절을 따른다. 아래 Qwen 준비 경로는 그 재현을 위한 안내다.
 
 - **기존 원격 PC**라면 1절에서 코드를 업데이트하고 3절의 파일 존재 여부를 확인한 뒤 5절에서 기존 파일럿 폴더와 서버를 확인한다. 이후 7절을 실행한다.
 - **새 PC**라면 1~6절에서 환경·모델·그 장비의 FP16 개발 파일럿을 준비한 뒤 7절을 실행한다. 기존 설정 잠금에는 장비·서버 빌드·템플릿 정보가 들어 있다.
@@ -68,7 +70,7 @@ git log -1 --oneline
 python -m unittest discover -s tests -p "test_phase2*.py" -v
 ```
 
-현재 예상 결과는 **33개 테스트와 `OK`**다. `psutil`은 서버 PID와 실행 옵션 확인에도 사용한다. 이후 명령은 프로젝트 루트와 활성화된 가상환경에서 실행한다. 창을 새로 열면 `cd`와 가상환경 활성화를 다시 한다.
+현재 예상 결과는 **40개 테스트와 `OK`**다. `psutil`은 서버 PID와 실행 옵션 확인에도 사용한다. 이후 명령은 프로젝트 루트와 활성화된 가상환경에서 실행한다. 창을 새로 열면 `cd`와 가상환경 활성화를 다시 한다.
 
 ## 2. NVIDIA GPU용 llama.cpp 준비
 
