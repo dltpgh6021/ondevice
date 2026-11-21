@@ -40,8 +40,8 @@ def load_reference(directory):
 
 def validate_rows(rows,stage):
     expected={(p['base'],p['mode'],p['condition']):p for p in input_plan(stage)}
-    if len(rows)!=12 or {(r['base'],r['mode'],r['condition']) for r in rows}!=set(expected):
-        raise ValueError('Need twelve unique trials in this stage')
+    if len(rows)!=len(expected) or {(r['base'],r['mode'],r['condition']) for r in rows}!=set(expected):
+        raise ValueError(f'Need {len(expected)} unique trials in this stage')
     environments={(e.base,e.mode,e.condition):e for e in trial_plan(stage)}
     for row in rows:
         if row.get('protocol')!=PROTOCOL or row.get('stage')!=stage or type(row.get('success')) is not bool:
@@ -61,8 +61,38 @@ def validate_rows(rows,stage):
                     raise ValueError('Diagnostic tool/state replay differs')
         if env.state_hash()!=trace['final_state_hash'] or env.state_hash()!=stable_hash(trace['final_state']):
             raise ValueError('Diagnostic final state differs')
-        if any(stable_hash(row[k])!=stable_hash(v) for k,v in score_probe(env,trace).items()):
+        if any(stable_hash(row[k])!=stable_hash(v) for k,v in trial_scores(env,trace,stage).items()):
             raise ValueError('Diagnostic metrics differ')
+
+
+def trial_scores(env, trace, stage):
+    scores = score_probe(env, trace)
+    if stage == 'validation_dev12':
+        correct = [env.saved.get(line) == env.best(line) for line in range(1, env.h + 1)]
+        scores['bundle_all_correct'] = all(correct) if scores['success'] is not None else None
+        scores['bundle_correct_lines'] = sum(correct) if scores['success'] is not None else None
+    return scores
+
+
+def paired_comparisons(rows):
+    pairs = {}
+    for row in rows:
+        pairs.setdefault((row['condition'], row['base']), {})[row['mode']] = row
+    comparisons = []
+    for condition in ('normal_restart', 'error_restart'):
+        matched = [p for (c, _), p in sorted(pairs.items()) if c == condition]
+        for metric in ('accessory_correct_at_end', 'bundle_all_correct', 'success'):
+            gained, lost = [], []
+            for pair in matched:
+                optional = pair['validation_optional']
+                supplied = pair['validation_supplied']
+                if supplied[metric] and not optional[metric]:
+                    gained.append(supplied['base'])
+                if optional[metric] and not supplied[metric]:
+                    lost.append(optional['base'])
+            comparisons.append({'condition': condition, 'metric': metric, 'pairs': len(matched),
+                                'gained_with_report': gained, 'lost_with_report': lost})
+    return comparisons
 
 
 def summarize(rows,stage):
@@ -83,7 +113,13 @@ def summarize(rows,stage):
             if mode=='judge_saved':
                 cell.update(validity_correct=sum(r['validity_correct'] for r in valid),
                             best_offer_correct=sum(r['best_offer_correct'] for r in valid))
+            if stage == 'validation_dev12':
+                cell['bundle_all_correct'] = sum(r['bundle_all_correct'] for r in valid)
+                cell['bundle_correct_lines'] = sum(r['bundle_correct_lines'] for r in valid)
             cells.append(cell)
+    if stage == 'validation_dev12':
+        return {'protocol': PROTOCOL, 'stage': stage, 'cells': cells,
+                'paired': paired_comparisons(rows)}
     return {'protocol':PROTOCOL,'stage':stage,'cells':cells,
             'interpretation':('Three development scenarios. Basic probes isolate line 0 and are not h3 order success. '
                               'Supplied validation is a harness-provided report, not a model-selected call. '
@@ -93,8 +129,10 @@ def summarize(rows,stage):
 def run(args):
     reference=args.reference_run.resolve()
     plan,source_metadata=load_reference(reference)
-    print(json.dumps({'protocol':PROTOCOL,'stage':args.stage,'trials':12,
-                      'modes':STAGES[args.stage],'scenarios':[0,1,2],
+    inputs = input_plan(args.stage)
+    count = len(inputs)
+    print(json.dumps({'protocol':PROTOCOL,'stage':args.stage,'trials':count,
+                      'modes':STAGES[args.stage],'scenarios':sorted({p['base'] for p in inputs}),
                       'model_id':granite.MODEL_ID,'max_generated_turns':3 if args.stage=='basic' else 8},indent=2),flush=True)
     if args.dry_run:return
     if args.output_dir.exists():raise ValueError('Use a new output directory; keep previous or partial results')
@@ -113,7 +151,7 @@ def run(args):
               'reference_run':str(reference),'model_id':granite.MODEL_ID,'revision':granite.REVISION,
               'hardware':granite.hardware(),'loaded_dtype':'float16','max_tokens':512,
               'max_generated_turns':3 if args.stage=='basic' else 8,'seed':42,
-              'input_plan':input_plan(args.stage),
+              'input_plan':inputs,
               'reference_hashes':{p.name:sha256_file(p) for p in snapshot.iterdir()},'warmup':[]}
     print('Loading the existing Granite checkpoint as FP16...',flush=True)
     client=GraniteClient(model_dir,max_tokens=512)
@@ -135,21 +173,25 @@ def run(args):
             trace=run_agent(env.task(),client,env,condition=env.condition,
                             max_calls=metadata['max_generated_turns'],replay_rejected_output=False)
             row={'protocol':PROTOCOL,'stage':args.stage,'base':env.base,'mode':env.mode,
-                 'condition':env.condition,**score_probe(env,trace),'trace':trace}
+                 'condition':env.condition,**trial_scores(env,trace,args.stage),'trace':trace}
             stream.write(json.dumps(row,ensure_ascii=False)+'\n');stream.flush()
-            print(f"[{i}/12] {env.base} {env.mode} {env.condition} success={row['success']}",flush=True)
+            print(f"[{i}/{count}] {env.base} {env.mode} {env.condition} success={row['success']}",flush=True)
             if row['success'] is None:raise SystemExit('Infrastructure/internal error; partial log retained. Retry in a new directory.')
             rows.append(row)
     validate_rows(rows,args.stage)
     result=summarize(rows,args.stage)
     granite.write_json(args.output_dir/'summary.json',result)
     print(json.dumps(result,indent=2),flush=True)
-    print('COMPLETED: 12 valid diagnostic trials.',flush=True)
+    print(f'COMPLETED: {count} valid diagnostic trials.',flush=True)
 
 
 def report(args):
     metadata=json.loads((args.run_dir/'metadata.json').read_text(encoding='utf-8'))
-    if (metadata['protocol']!=PROTOCOL or metadata['source_hash']!=source_hash()
+    compatible_sources = {source_hash()}
+    if metadata['stage'] in ('basic', 'validation'):
+        # The original three-scenario traces have identical inputs, scores and replay checks.
+        compatible_sources.add('d8e2cbaf2913e5201cc1b0f955450eb8b528f116b82be348e9cae1e3142f7f8f')
+    if (metadata['protocol']!=PROTOCOL or metadata['source_hash'] not in compatible_sources
             or metadata['primary_protocol_hash']!=granite.fingerprint()
             or metadata['granite_runner_hash']!=granite.runner_hash()):
         raise ValueError('Use the matching diagnostic code for this result')

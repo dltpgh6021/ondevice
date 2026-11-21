@@ -104,6 +104,32 @@ class RecoveryDiagnosticTests(unittest.TestCase):
         self.assertFalse(scores['success'])
         self.assertTrue(scores['premature_finish'])
 
+    def test_dev12_replays_all_four_cells_and_matches_gains_by_scenario(self):
+        stage = 'validation_dev12'
+        rows = []
+        for env in trial_plan(stage):
+            # A scripted contrast: supplied completes all lines; optional stops immediately.
+            if env.mode == 'validation_supplied':
+                trace = oracle_trace(env)['trace']
+            else:
+                trace = run_agent(env.task(), ScriptedClient([]), env, condition=env.condition,
+                                  max_calls=8, replay_rejected_output=False)
+            rows.append(dict(protocol=runner.PROTOCOL, stage=stage, base=env.base,
+                             mode=env.mode, condition=env.condition, trace=trace,
+                             **runner.trial_scores(env, trace, stage)))
+        runner.validate_rows(rows, stage)
+        summary = runner.summarize(rows[::-1], stage)
+        self.assertEqual([cell['n_valid'] for cell in summary['cells']], [12]*4)
+        self.assertEqual([cell['bundle_correct_lines'] for cell in summary['cells']], [0,0,36,36])
+        expected = [f'dev-{i:03d}' for i in range(12)]
+        for item in summary['paired']:
+            preserved = item['condition']=='normal_restart' and item['metric']=='accessory_correct_at_end'
+            self.assertEqual(item['pairs'], 12)
+            self.assertEqual(item['gained_with_report'], [] if preserved else expected)
+            self.assertEqual(item['lost_with_report'], [])
+        with self.assertRaises(ValueError):
+            runner.validate_rows(rows[:-1] + [rows[0]], stage)
+
     def test_summary_excludes_infrastructure_and_replay_rejects_tampering(self):
         rows=[oracle_trace(e) for e in trial_plan('validation')]
         bad=copy.deepcopy(rows);bad[0]['success']=None

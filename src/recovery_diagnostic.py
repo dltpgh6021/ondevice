@@ -9,7 +9,8 @@ from .tasks import stable_hash
 
 PROTOCOL = 'recovery-components-v1'
 STAGES = {'basic': ('judge_saved', 'apply_exact'),
-          'validation': ('validation_optional', 'validation_supplied')}
+          'validation': ('validation_optional', 'validation_supplied'),
+          'validation_dev12': ('validation_optional', 'validation_supplied')}
 ASSESS_TOOL = {'type':'function','function':{
     'name':'submit_assessment',
     'description':'Record your assessment of line 0. This does not change the stored order.',
@@ -158,7 +159,7 @@ def trial_plan(stage):
     if stage not in STAGES:
         raise ValueError('Unknown stage')
     kind = SingleLineProbe if stage=='basic' else ValidationProbe
-    for scenario in (0,1,2):
+    for scenario in range(12 if stage == 'validation_dev12' else 3):
         # Rotate mode/condition order; every scenario still gets all four cells.
         modes = STAGES[stage][scenario%2:]+STAGES[stage][:scenario%2]
         for j,mode in enumerate(modes):
